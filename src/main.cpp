@@ -1,21 +1,22 @@
 #include "glfw/glfw_engine.hpp"
-#include "vulkan/vulkan_engine.hpp"
+#include "vulkan/vulkan_context.hpp"
+#include "vulkan/vulkan_device.hpp"
 
 #include <cstdio>
 #include <exception>
 #include <memory>
-#include <vector>
 
 int main() {
 	try {
-		// basic main setup
 		engine::GLFWContext   glfw;
 		engine::Window        window({ 500, 500, "Engine", true });
-		engine::VulkanContext vulkan(window);
+		engine::VulkanDevice  device(window.handle(), "Engine");
+		engine::VulkanContext vulkan(device, &window);
 
-		// testing multiple windows
-		std::unique_ptr<engine::Window>        window2 = std::make_unique<engine::Window>(engine::WindowConfig{ 250, 250, "Window 2", true });
-		std::unique_ptr<engine::VulkanContext> vulkan2 = std::make_unique<engine::VulkanContext>(*window2);
+		std::unique_ptr<engine::Window> window2 =
+		    std::make_unique<engine::Window>(engine::WindowConfig{ 250, 250, "Window 2", true });
+		std::unique_ptr<engine::VulkanContext> vulkan2 =
+		    std::make_unique<engine::VulkanContext>(device, window2.get());
 
 		while (!window.shouldClose()) {
 			window.pollEvents();
@@ -27,10 +28,8 @@ int main() {
 				vulkan.endFrame(frame);
 			}
 
-			// testing multiple windows
 			if (window2 && vulkan2) {
 				if (!window2->shouldClose()) {
-					window2->pollEvents();
 					if (window2->keyPressed(GLFW_KEY_ESCAPE) || window2->keyPressed(GLFW_KEY_Q)) {
 						glfwSetWindowShouldClose(window2->handle(), GLFW_TRUE);
 					}

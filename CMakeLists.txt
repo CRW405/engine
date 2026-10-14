@@ -51,12 +51,8 @@ add_custom_target(shaders DEPENDS ${SHADER_OUTPUTS})
 add_executable(engine
     src/main.cpp
     src/glfw/glfw_engine.cpp
-    src/vulkan/vulkan_engine.cpp
-    src/vulkan/vulkan_instance.cpp
     src/vulkan/vulkan_device.cpp
-    src/vulkan/vulkan_swapchain.cpp
-    src/vulkan/vulkan_commands.cpp
-    src/vulkan/vulkan_frame.cpp
+    src/vulkan/vulkan_context.cpp
     ${SHADER_OUTPUTS}
 )
 add_dependencies(engine shaders)

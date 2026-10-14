@@ -1,0 +1,90 @@
+#pragma once
+
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
+#include <array>
+#include <cstdint>
+#include <vector>
+
+#include "glfw/glfw_engine.hpp"
+#include "vulkan_device.hpp"
+
+namespace engine {
+constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+
+struct Frame {
+	VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+	std::uint32_t   imageIndex    = 0;
+	std::uint32_t   frameIndex    = 0;
+};
+
+class VulkanContext {
+  public:
+	// A context owns all presentation resources for one window. Multiple contexts
+	// can share the same VulkanDevice and therefore the same logical device.
+	explicit VulkanContext(VulkanDevice &device, Window *window);
+	~VulkanContext();
+
+	// disable copying and moving
+	VulkanContext(const VulkanContext &)            = delete;
+	VulkanContext &operator=(const VulkanContext &) = delete;
+	VulkanContext(VulkanContext &&)                 = delete;
+	VulkanContext &operator=(VulkanContext &&)      = delete;
+
+	// getters and handles
+	[[nodiscard]] VkRenderPass                renderPass() const noexcept { return render_pass_; }
+	[[nodiscard]] VkExtent2D                  extent() const noexcept { return swapchain_extent_; }
+	[[nodiscard]] VkFormat                    swapchainFormat() const noexcept { return swapchain_format_; }
+	[[nodiscard]] const std::vector<VkImage> &swapchainImages() const noexcept { return swapchain_images_; }
+	[[nodiscard]] const std::vector<VkImageView> &swapchainImageViews() const noexcept {
+		return swapchain_image_views_;
+	}
+	void setRenderPass(VkRenderPass render_pass) noexcept { render_pass_ = render_pass; }
+
+	// frame management
+	[[nodiscard]] Frame beginFrame();
+	void                endFrame(const Frame &frame);
+	void                recreateSwapchain();
+	void                notifyFramebufferResized() { framebuffer_resized_ = true; }
+
+  private:
+	struct SwapchainSupportDetails {
+		VkSurfaceCapabilitiesKHR        capabilities{};
+		std::vector<VkSurfaceFormatKHR> formats;
+		std::vector<VkPresentModeKHR>   presentModes;
+	};
+
+	void createSurface();
+	void createSwapchain();
+	void createCommandResources();
+
+	void destroySwapchain();
+	void destroyWindowResources();
+
+	void waitForValidFramebufferSize() const;
+
+	[[nodiscard]] SwapchainSupportDetails querySwapchainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) const;
+
+	VulkanDevice &device_; // Non-owning shared device lifetime must outlive this context.
+	Window        *window_;
+
+	VkSurfaceKHR                                      surface_          = VK_NULL_HANDLE;
+	VkSwapchainKHR                                    swapchain_        = VK_NULL_HANDLE;
+	VkFormat                                          swapchain_format_ = VK_FORMAT_UNDEFINED;
+	VkExtent2D                                        swapchain_extent_{};
+	std::vector<VkImage>                              swapchain_images_;
+	std::vector<VkImageView>                          swapchain_image_views_;
+	VkRenderPass                                      render_pass_  = VK_NULL_HANDLE;
+	VkCommandPool                                     command_pool_ = VK_NULL_HANDLE;
+	std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers_{};
+	std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     image_available_{};
+	std::vector<VkSemaphore>                          render_finished_;
+	std::array<VkFence, MAX_FRAMES_IN_FLIGHT>         in_flight_{};
+	std::vector<VkFence>                              images_in_flight_;
+
+	std::uint32_t current_frame_       = 0;
+	bool          framebuffer_resized_ = false;
+};
+
+} // namespace engine
