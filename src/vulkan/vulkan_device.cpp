@@ -1,13 +1,14 @@
 #include "vulkan_device.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <set>
 #include <stdexcept>
 #include <utility>
 
 namespace engine {
 
-constexpr bool        enable_validation   = true;
+constexpr bool        enable_validation   = false;
 constexpr const char *validation_layer    = "VK_LAYER_KHRONOS_validation";
 constexpr const char *swapchain_extension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 
@@ -142,6 +143,9 @@ void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
 		const QueueFamilies queues = findQueueFamilies(device, surface);
 		if (queues.hasGraphics && queues.hasPresent && swapchainExtensionAvailable(device)) {
 			physical_device_ = device;
+			VkPhysicalDeviceProperties properties{};
+			vkGetPhysicalDeviceProperties(physical_device_, &properties);
+			std::cout << "Selected Vulkan device: " << properties.deviceName << std::endl;
 			return;
 		}
 	}

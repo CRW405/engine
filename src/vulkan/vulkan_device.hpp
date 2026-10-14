@@ -11,6 +11,8 @@
 #include "glfw/glfw_engine.hpp"
 
 namespace engine {
+
+// Structure to hold the indices of the graphics and present queue families
 struct QueueFamilies {
 	std::uint32_t graphics    = 0;
 	std::uint32_t present     = 0;
@@ -18,8 +20,10 @@ struct QueueFamilies {
 	bool          hasPresent  = false;
 };
 
+// wrapper class for general vulkan device management
 class VulkanDevice {
   public:
+	// a window is required to create a Vulkan surface for device selection
 	explicit VulkanDevice(GLFWwindow *main_window, std::string app_name = "Engine");
 	~VulkanDevice();
 
@@ -38,10 +42,11 @@ class VulkanDevice {
 	[[nodiscard]] QueueFamilies    findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) const;
 
   private:
-	void createInstance(const std::string app_name);
-	void selectPhysicalDevice(VkSurfaceKHR surface);
-	void createLogicalDevice(VkSurfaceKHR surface);
+	void createInstance(const std::string app_name); // create the actual Vulkan instance
+	void selectPhysicalDevice(VkSurfaceKHR surface); // select a suitable physical device (GPU) that supports graphics and presentation
+	void createLogicalDevice(VkSurfaceKHR surface);  // create a logical device from the selected physical device and retrieve the graphics and present queues
 
+	// Vulkan handles and properties
 	std::string      app_name_;
 	VkInstance       instance_        = VK_NULL_HANDLE;
 	VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;

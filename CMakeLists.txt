@@ -53,6 +53,7 @@ add_executable(engine
     src/glfw/glfw_engine.cpp
     src/vulkan/vulkan_device.cpp
     src/vulkan/vulkan_context.cpp
+    src/vulkan/vertex_buffer.cpp
     ${SHADER_OUTPUTS}
 )
 add_dependencies(engine shaders)
