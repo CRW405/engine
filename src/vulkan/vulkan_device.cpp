@@ -8,7 +8,7 @@
 
 namespace engine {
 
-constexpr bool        enable_validation   = false;
+constexpr bool        enable_validation   = true;
 constexpr const char *validation_layer    = "VK_LAYER_KHRONOS_validation";
 constexpr const char *swapchain_extension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 

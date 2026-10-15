@@ -39,6 +39,8 @@ class Window {
 
 	// expose the real GLFW operations through our window wrapper
 	[[nodiscard]] GLFWwindow *handle() const noexcept { return window_; }
+	[[nodiscard]] int         width() const noexcept;
+	[[nodiscard]] int         height() const noexcept;
 	[[nodiscard]] bool        shouldClose() const noexcept;
 	void                      pollEvents() const noexcept;
 	[[nodiscard]] double      time() const noexcept;

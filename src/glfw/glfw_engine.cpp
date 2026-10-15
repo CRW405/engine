@@ -53,6 +53,24 @@ Window &Window::operator=(Window &&other) noexcept {
 	return *this;
 }
 
+int Window::width() const noexcept {
+	int width  = 0;
+	int height = 0;
+	if (window_ != nullptr) {
+		glfwGetFramebufferSize(window_, &width, &height);
+	}
+	return width;
+}
+
+int Window::height() const noexcept {
+	int width  = 0;
+	int height = 0;
+	if (window_ != nullptr) {
+		glfwGetFramebufferSize(window_, &width, &height);
+	}
+	return height;
+}
+
 bool Window::shouldClose() const noexcept {
 	return window_ == nullptr || glfwWindowShouldClose(window_) == GLFW_TRUE;
 }

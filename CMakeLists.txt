@@ -48,14 +48,8 @@ endforeach()
 
 add_custom_target(shaders DEPENDS ${SHADER_OUTPUTS})
 
-add_executable(engine
-    src/main.cpp
-    src/glfw/glfw_engine.cpp
-    src/vulkan/vulkan_device.cpp
-    src/vulkan/vulkan_context.cpp
-    src/vulkan/vertex_buffer.cpp
-    ${SHADER_OUTPUTS}
-)
+file(GLOB_RECURSE ENGINE_SOURCES "src/*.cpp" "src/**/*.cpp")
+add_executable(engine ${ENGINE_SOURCES})
 add_dependencies(engine shaders)
 
 target_include_directories(engine PRIVATE
@@ -70,3 +64,10 @@ if(MSVC)
 else()
     target_compile_options(engine PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
+
+add_custom_target(run
+    COMMAND engine
+    DEPENDS engine
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Running engine"
+)
