@@ -9,12 +9,23 @@
 #include <exception>
 #include <vector>
 
+int vulkan_triangle();
+
+int main() {
+	try {
+		return vulkan_triangle();
+	} catch (const std::exception &e) {
+		std::fprintf(stderr, "Error: %s\n", e.what());
+		return EXIT_FAILURE;
+	}
+}
+
 struct simple_vertex {
 	float position[2];
 	float color[3];
 };
 
-int main() {
+int vulkan_triangle() {
 	try {
 		/*
 		 * Step 1: create the process, window, Vulkan device, and presentation
@@ -59,7 +70,7 @@ int main() {
 		 * Step 3: create the pipeline and upload the triangle data. The pipeline
 		 * owns its shader modules and default layout after construction.
 		 */
-		engine::Pipeline pipeline(device, "shaders/simple.vert.spv", "shaders/simple.frag.spv", pipelineConfig);
+		engine::Pipeline pipeline(device, "shaders/vulkan_triangle.vert.spv", "shaders/vulkan_triangle.frag.spv", pipelineConfig);
 
 		std::vector<simple_vertex> vulkan_triangle = {
 			{ { -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f } },
