@@ -19,7 +19,6 @@ class GLFWContext {
 	explicit GLFWContext();
 	~GLFWContext();
 
-	// prevent copying and assignment
 	GLFWContext(const GLFWContext &)            = delete;
 	GLFWContext &operator=(const GLFWContext &) = delete;
 };
@@ -29,15 +28,12 @@ class Window {
 	explicit Window(const WindowConfig &config);
 	~Window();
 
-	// prevent copying and assignment
 	Window(const Window &)            = delete;
 	Window &operator=(const Window &) = delete;
 
-	// setup move semantics for Window, forcing the proper way
 	Window(Window &&) noexcept;
 	Window &operator=(Window &&) noexcept;
 
-	// expose the real GLFW operations through our window wrapper
 	[[nodiscard]] GLFWwindow *handle() const noexcept { return window_; }
 	[[nodiscard]] int         width() const noexcept;
 	[[nodiscard]] int         height() const noexcept;
@@ -50,4 +46,4 @@ class Window {
 	GLFWwindow *window_ = nullptr;
 };
 
-} // namespace engine
+}

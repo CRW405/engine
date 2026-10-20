@@ -11,30 +11,30 @@
 #include "vulkan_device.hpp"
 
 namespace engine {
+
 constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
-// Structure to hold the command buffer and image index for a frame
 struct Frame {
 	VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
 	std::uint32_t   imageIndex    = 0;
 	std::uint32_t   frameIndex    = 0;
 };
 
-// Wrapper class for managing Vulkan context, including swapchain and rendering resources
+/*
+ * Owns the presentation resources for one window. The device is shared, while
+ * the surface, swapchain, render pass, framebuffers, and frame synchronization
+ * belong to this context.
+ */
 class VulkanContext {
   public:
-	// A context owns all presentation resources for one window. Multiple contexts
-	// can share the same VulkanDevice and therefore the same logical device.
 	explicit VulkanContext(VulkanDevice &device, Window *window);
 	~VulkanContext();
 
-	// disable copying and moving
 	VulkanContext(const VulkanContext &)            = delete;
 	VulkanContext &operator=(const VulkanContext &) = delete;
 	VulkanContext(VulkanContext &&)                 = delete;
 	VulkanContext &operator=(VulkanContext &&)      = delete;
 
-	// getters and handles
 	[[nodiscard]] VkRenderPass                    renderPass() const noexcept { return render_pass_; }
 	[[nodiscard]] VkExtent2D                      extent() const noexcept { return swapchain_extent_; }
 	[[nodiscard]] VkFormat                        swapchainFormat() const noexcept { return swapchain_format_; }
@@ -42,9 +42,8 @@ class VulkanContext {
 	[[nodiscard]] const std::vector<VkImageView> &swapchainImageViews() const noexcept {
 		return swapchain_image_views_;
 	}
-	void setRenderPass(VkRenderPass render_pass) noexcept { render_pass_ = render_pass; }
+	[[nodiscard]] VkFramebuffer framebuffer(std::uint32_t index) const;
 
-	// frame management
 	[[nodiscard]] Frame beginFrame();
 	void                endFrame(const Frame &frame);
 	void                recreateSwapchain();
@@ -59,26 +58,27 @@ class VulkanContext {
 
 	void createSurface();
 	void createSwapchain();
+	void createRenderPass();
+	void createFramebuffers();
 	void createCommandResources();
 
-	void destroySwapchain();
+	void destroySwapchain(bool destroy_render_pass = true);
 	void destroyWindowResources();
 
-	void waitForValidFramebufferSize() const; // Wait until the framebuffer size is non-zero (e.g., when minimized, the size can be zero).
+	void waitForValidFramebufferSize() const;
 
 	[[nodiscard]] SwapchainSupportDetails querySwapchainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) const;
 
-	// Engine resources and handles
-	VulkanDevice &device_; // Non-owning shared device lifetime must outlive this context.
+	VulkanDevice &device_;
 	Window       *window_;
 
-	// Vulkan handles and resources
 	VkSurfaceKHR                                      surface_          = VK_NULL_HANDLE;
 	VkSwapchainKHR                                    swapchain_        = VK_NULL_HANDLE;
 	VkFormat                                          swapchain_format_ = VK_FORMAT_UNDEFINED;
 	VkExtent2D                                        swapchain_extent_{};
 	std::vector<VkImage>                              swapchain_images_;
 	std::vector<VkImageView>                          swapchain_image_views_;
+	std::vector<VkFramebuffer>                        swapchain_framebuffers_;
 	VkRenderPass                                      render_pass_  = VK_NULL_HANDLE;
 	VkCommandPool                                     command_pool_ = VK_NULL_HANDLE;
 	std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers_{};
@@ -87,9 +87,8 @@ class VulkanContext {
 	std::array<VkFence, MAX_FRAMES_IN_FLIGHT>         in_flight_{};
 	std::vector<VkFence>                              images_in_flight_;
 
-	// Frame management
 	std::uint32_t current_frame_       = 0;
 	bool          framebuffer_resized_ = false;
 };
 
-} // namespace engine
+}

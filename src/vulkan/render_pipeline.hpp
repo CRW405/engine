@@ -1,14 +1,27 @@
 #pragma once
 
 #define GLFW_INCLUDE_VULKAN
-#include "vulkan_device.hpp"
 #include <GLFW/glfw3.h>
+
 #include <string>
 #include <vector>
 
+#include "vulkan_device.hpp"
+
 namespace engine {
 
+/*
+ * Describes the fixed-function state used to create a graphics pipeline.
+ * Vulkan stores pointers in several create-info structs, so this type repairs
+ * its internal pointers whenever it is copied or moved.
+ */
 struct PipelineConfigInfo {
+	PipelineConfigInfo() = default;
+	PipelineConfigInfo(const PipelineConfigInfo &other);
+	PipelineConfigInfo &operator=(const PipelineConfigInfo &other);
+	PipelineConfigInfo(PipelineConfigInfo &&other) noexcept;
+	PipelineConfigInfo &operator=(PipelineConfigInfo &&other) noexcept;
+
 	VkPipelineVertexInputStateCreateInfo   vertexInputInfo;
 	VkPipelineViewportStateCreateInfo      viewportInfo;
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
@@ -22,6 +35,9 @@ struct PipelineConfigInfo {
 	VkPipelineLayout                       pipelineLayout = VK_NULL_HANDLE;
 	VkRenderPass                           renderPass     = VK_NULL_HANDLE;
 	uint32_t                               subpass        = 0;
+
+  private:
+	void refreshInternalPointers() noexcept;
 };
 
 class Pipeline {
@@ -34,11 +50,9 @@ class Pipeline {
 
 	~Pipeline();
 
-	// Disable copy semantics
 	Pipeline(const Pipeline &)            = delete;
 	Pipeline &operator=(const Pipeline &) = delete;
 
-	// Move semantics
 	Pipeline(Pipeline &&) noexcept;
 	Pipeline &operator=(Pipeline &&) = delete;
 
@@ -47,8 +61,7 @@ class Pipeline {
 	[[nodiscard]] VkPipeline       pipeline() const noexcept { return pipeline_; }
 	[[nodiscard]] VkPipelineLayout layout() const noexcept { return layout_; }
 
-	// Helper to populate default configuration settings
-	static PipelineConfigInfo defaultPipelineConfigInfo(uint32_t width, uint32_t height);
+	static PipelineConfigInfo defaultPipelineConfigInfo();
 
   private:
 	static std::vector<char> readFile(const std::string &filepath);
@@ -59,6 +72,7 @@ class Pipeline {
 	VkPipelineLayout layout_           = VK_NULL_HANDLE;
 	VkShaderModule   vertShaderModule_ = VK_NULL_HANDLE;
 	VkShaderModule   fragShaderModule_ = VK_NULL_HANDLE;
+	bool             owns_layout_      = false;
 };
 
-} // namespace engine
+}

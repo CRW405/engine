@@ -13,15 +13,12 @@ class VertexBuffer {
 	VertexBuffer(VulkanDevice &device, const void *data, VkDeviceSize size);
 	~VertexBuffer();
 
-	// Disable copy semantics
 	VertexBuffer(const VertexBuffer &)            = delete;
 	VertexBuffer &operator=(const VertexBuffer &) = delete;
 
-	// Move semantics
 	VertexBuffer(VertexBuffer &&) noexcept;
 	VertexBuffer &operator=(VertexBuffer &&) = delete;
 
-	// Getters and handles
 	[[nodiscard]] VkBuffer     buffer() const noexcept { return buffer_; }
 	[[nodiscard]] VkDeviceSize size() const noexcept { return size_; }
 
@@ -32,4 +29,4 @@ class VertexBuffer {
 	VkDeviceSize   size_   = 0;
 };
 
-} // namespace engine
+}

@@ -8,11 +8,52 @@
 
 namespace engine {
 
+/*
+ * Validation is kept enabled for learning and development. The debug messenger
+ * is attached to instance creation so validation can report setup errors as
+ * well as errors that occur after the instance exists.
+ */
 constexpr bool        enable_validation   = true;
 constexpr const char *validation_layer    = "VK_LAYER_KHRONOS_validation";
 constexpr const char *swapchain_extension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+constexpr const char *debug_extension     = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+
+VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT      severity,
+    VkDebugUtilsMessageTypeFlagsEXT,
+    const VkDebugUtilsMessengerCallbackDataEXT *callback_data,
+    void *) {
+	const char *label = severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ? "ERROR" : "INFO";
+	std::cerr << "[Vulkan " << label << "] " << callback_data->pMessage << '\n';
+	return VK_FALSE;
+}
+
+VkDebugUtilsMessengerCreateInfoEXT debugMessengerInfo() {
+	VkDebugUtilsMessengerCreateInfoEXT info{};
+	info.sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+	                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+	                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+	                   VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+	                   VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	info.pfnUserCallback = debugCallback;
+	return info;
+}
+
+bool instanceExtensionAvailable(const char *name) {
+	/* Query the loader before adding optional instance extensions. */
+	std::uint32_t count = 0;
+	vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+	std::vector<VkExtensionProperties> extensions(count);
+	vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
+	return std::any_of(extensions.begin(), extensions.end(), [name](const VkExtensionProperties &extension) {
+		return std::strcmp(extension.extensionName, name) == 0;
+	});
+}
 
 bool validationAvailable() {
+	/* Validation is required by this development-oriented bootstrap. */
 	std::uint32_t count = 0;
 	vkEnumerateInstanceLayerProperties(&count, nullptr);
 	std::vector<VkLayerProperties> layers(count);
@@ -23,6 +64,7 @@ bool validationAvailable() {
 }
 
 bool swapchainExtensionAvailable(VkPhysicalDevice device) {
+	/* A device must expose swapchain support before it can present. */
 	std::uint32_t count = 0;
 	vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
 	std::vector<VkExtensionProperties> extensions(count);
@@ -33,6 +75,10 @@ bool swapchainExtensionAvailable(VkPhysicalDevice device) {
 }
 
 VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_name_(std::move(app_name)) {
+	/*
+	 * Step 1: create the instance and a temporary surface used only to evaluate
+	 * queue families during physical-device selection.
+	 */
 	if (main_window == nullptr) {
 		throw std::invalid_argument("VulkanDevice requires a valid window");
 	}
@@ -41,16 +87,19 @@ VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_
 
 	VkSurfaceKHR selection_surface = VK_NULL_HANDLE;
 	if (glfwCreateWindowSurface(instance_, main_window, nullptr, &selection_surface) != VK_SUCCESS) {
+		destroyDebugMessenger();
 		vkDestroyInstance(instance_, nullptr);
 		instance_ = VK_NULL_HANDLE;
 		throw std::runtime_error("failed to create Vulkan surface for device selection");
 	}
 
 	try {
+		/* Step 2: choose a device and create the logical queues used by rendering. */
 		selectPhysicalDevice(selection_surface);
 		createLogicalDevice(selection_surface);
 	} catch (...) {
 		vkDestroySurfaceKHR(instance_, selection_surface, nullptr);
+		destroyDebugMessenger();
 		vkDestroyInstance(instance_, nullptr);
 		instance_ = VK_NULL_HANDLE;
 		throw;
@@ -63,16 +112,25 @@ VulkanDevice::~VulkanDevice() {
 		vkDeviceWaitIdle(device_);
 		vkDestroyDevice(device_, nullptr);
 	}
+	destroyDebugMessenger();
 	if (instance_ != VK_NULL_HANDLE) {
 		vkDestroyInstance(instance_, nullptr);
 	}
 }
 
 void VulkanDevice::createInstance(const std::string app_name) {
+	/*
+	 * Step 1: verify development layers and gather the extensions required by
+	 * GLFW. The debug extension is added only when the loader provides it.
+	 */
 	if (enable_validation && !validationAvailable()) {
 		throw std::runtime_error("Vulkan validation layer is unavailable");
 	}
 
+	/*
+	 * Step 2: describe the application and create the Vulkan instance. The
+	 * debug messenger create info is chained here to capture startup messages.
+	 */
 	VkApplicationInfo app_info{};
 	app_info.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	app_info.pApplicationName   = app_name.c_str();
@@ -81,27 +139,70 @@ void VulkanDevice::createInstance(const std::string app_name) {
 	app_info.engineVersion      = VK_MAKE_VERSION(0, 1, 0);
 	app_info.apiVersion         = VK_API_VERSION_1_0;
 
-	std::uint32_t extension_count = 0;
-	const char  **extensions      = glfwGetRequiredInstanceExtensions(&extension_count);
-	if (extensions == nullptr) {
+	std::uint32_t glfw_extension_count = 0;
+	const char  **glfw_extensions       = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+	if (glfw_extensions == nullptr) {
 		throw std::runtime_error("GLFW did not provide Vulkan extensions");
+	}
+	std::vector<const char *> extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
+	const bool                has_debug_extension = instanceExtensionAvailable(debug_extension);
+	if (enable_validation && has_debug_extension) {
+		extensions.push_back(debug_extension);
 	}
 
 	VkInstanceCreateInfo info{};
 	info.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	info.pApplicationInfo        = &app_info;
-	info.enabledExtensionCount   = extension_count;
-	info.ppEnabledExtensionNames = extensions;
+	info.enabledExtensionCount   = static_cast<std::uint32_t>(extensions.size());
+	info.ppEnabledExtensionNames = extensions.data();
 	if (enable_validation) {
 		info.enabledLayerCount   = 1;
 		info.ppEnabledLayerNames = &validation_layer;
 	}
+	VkDebugUtilsMessengerCreateInfoEXT debug_info{};
+	if (enable_validation && has_debug_extension) {
+		debug_info = debugMessengerInfo();
+		info.pNext = &debug_info;
+	}
 	if (vkCreateInstance(&info, nullptr, &instance_) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create Vulkan instance");
 	}
+	if (enable_validation && has_debug_extension) {
+		setupDebugMessenger();
+	}
+}
+
+void VulkanDevice::setupDebugMessenger() {
+	/* Create the callback that reports validation messages after instance setup. */
+	const auto create_messenger = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+	    vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT"));
+	if (create_messenger == nullptr) {
+		throw std::runtime_error("failed to load Vulkan debug messenger function");
+	}
+	const VkDebugUtilsMessengerCreateInfoEXT info = debugMessengerInfo();
+	if (create_messenger(instance_, &info, nullptr, &debug_messenger_) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create Vulkan debug messenger");
+	}
+}
+
+void VulkanDevice::destroyDebugMessenger() noexcept {
+	/* The messenger must be removed before its owning instance is destroyed. */
+	if (instance_ == VK_NULL_HANDLE || debug_messenger_ == VK_NULL_HANDLE) {
+		return;
+	}
+	const auto destroy_messenger = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+	    vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT"));
+	if (destroy_messenger != nullptr) {
+		destroy_messenger(instance_, debug_messenger_, nullptr);
+	}
+	debug_messenger_ = VK_NULL_HANDLE;
 }
 
 QueueFamilies VulkanDevice::findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) const {
+	/*
+	 * Walk every queue family once and record the first graphics and present
+	 * queues. A device is usable only when both capabilities are available.
+	 */
 	QueueFamilies result{};
 	std::uint32_t count = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
@@ -129,6 +230,10 @@ QueueFamilies VulkanDevice::findQueueFamilies(VkPhysicalDevice device, VkSurface
 }
 
 void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
+	/*
+	 * Prefer the first device that can draw, present, and expose the swapchain
+	 * extension. This keeps selection predictable while the bootstrap is small.
+	 */
 	std::uint32_t count = 0;
 	if (vkEnumeratePhysicalDevices(instance_, &count, nullptr) != VK_SUCCESS || count == 0) {
 		throw std::runtime_error("no Vulkan devices found");
@@ -153,6 +258,10 @@ void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
 }
 
 void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface) {
+	/*
+	 * Create one queue for each distinct family. When graphics and presentation
+	 * share a family, the set removes the duplicate automatically.
+	 */
 	const QueueFamilies                  queues   = findQueueFamilies(physical_device_, surface);
 	const float                          priority = 1.0f;
 	std::vector<VkDeviceQueueCreateInfo> queue_infos;
@@ -180,4 +289,4 @@ void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface) {
 	vkGetDeviceQueue(device_, queues.present, 0, &present_queue_);
 }
 
-} // namespace engine
+}

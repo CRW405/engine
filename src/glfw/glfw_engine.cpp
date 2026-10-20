@@ -5,7 +5,12 @@
 
 namespace engine {
 
+/*
+ * GLFWContext controls the process-wide GLFW lifetime. Window owns one GLFW
+ * window and exposes only the operations needed by the renderer and main loop.
+ */
 GLFWContext::GLFWContext() {
+	/* Step 1: initialize GLFW before any window or Vulkan surface is created. */
 	if (!glfwInit()) {
 		throw std::runtime_error("Failed to initialize GLFW");
 	}
@@ -16,13 +21,14 @@ GLFWContext::~GLFWContext() {
 }
 
 Window::Window(const WindowConfig &config) {
+	/* Step 2: reject invalid settings before passing them to GLFW. */
 	if (config.width <= 0 || config.height <= 0 || config.title.empty()) {
 		throw std::invalid_argument("window dimensions and title must be valid");
 	}
 
+	/* Step 3: create a window with Vulkan presentation handled externally. */
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GLFW_TRUE : GLFW_FALSE);
-	// glfwWindowHintString(GLFW_WAYLAND_APP_ID, "Engine");
 	glfwWindowHintString(GLFW_WAYLAND_APP_ID, "make-me-float");
 	window_ = glfwCreateWindow(config.width, config.height, config.title.c_str(), nullptr, nullptr);
 	if (window_ == nullptr) {
@@ -31,18 +37,18 @@ Window::Window(const WindowConfig &config) {
 }
 
 Window::~Window() {
+	/* Destroying the window releases the native handle owned by this wrapper. */
 	if (window_ != nullptr) {
 		glfwDestroyWindow(window_);
 	}
 }
 
-// // Move semantics for Window that enforce exclusice ownership, this makes it easuier and safer to move windows around eg. in a vector of windows, or to return a window from a function without copying it
-// Move constructor
 Window::Window(Window &&other) noexcept : window_(other.window_) {
 	other.window_ = nullptr;
 }
-// Move assignment operator
+
 Window &Window::operator=(Window &&other) noexcept {
+	/* Move assignment replaces this wrapper's owned native handle. */
 	if (this != &other) {
 		if (window_ != nullptr) {
 			glfwDestroyWindow(window_);
@@ -87,4 +93,4 @@ bool Window::keyPressed(int key) const noexcept {
 	return window_ != nullptr && glfwGetKey(window_, key) == GLFW_PRESS;
 }
 
-} // namespace engine
+}

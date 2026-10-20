@@ -4,9 +4,9 @@
 #include "vulkan/vulkan_context.hpp"
 #include "vulkan/vulkan_device.hpp"
 
+#include <cstdint>
 #include <cstdio>
 #include <exception>
-#include <memory>
 #include <vector>
 
 struct simple_vertex {
@@ -16,21 +16,51 @@ struct simple_vertex {
 
 int main() {
 	try {
-		// main basic setup
-		engine::GLFWContext        glfw;
-		engine::Window             window({ 500, 500, "Engine", true });
-		engine::VulkanDevice       device(window.handle(), "Engine");
-		engine::VulkanContext      vulkan(device, &window);
-		engine::PipelineConfigInfo pipelineConfig = engine::Pipeline::defaultPipelineConfigInfo(500, 500);
-		engine::Pipeline           pipeline(device, "shaders/simple.vert.spv", "shaders/simple.frag.spv", pipelineConfig);
+		/*
+		 * Step 1: create the process, window, Vulkan device, and presentation
+		 * context. These objects are declared in dependency order so teardown
+		 * happens in the reverse order automatically.
+		 */
+		engine::GLFWContext   glfw;
+		engine::Window        window({ 500, 500, "Engine", true });
+		engine::VulkanDevice  device(window.handle(), "Engine");
+		engine::VulkanContext vulkan(device, &window);
 
-		// // test creating a second window and Vulkan context
-		// std::unique_ptr<engine::Window> window2 =
-		//     std::make_unique<engine::Window>(engine::WindowConfig{ 250, 250, "Window 2", true });
-		// std::unique_ptr<engine::VulkanContext> vulkan2 =
-		//     std::make_unique<engine::VulkanContext>(device, window2.get());
+		/*
+		 * Step 2: describe how simple_vertex is laid out in the vertex buffer.
+		 * The shader locations must match these attribute descriptions.
+		 */
+		engine::PipelineConfigInfo pipelineConfig = engine::Pipeline::defaultPipelineConfigInfo();
 
-		// testing vertex buffer
+		VkVertexInputBindingDescription bindingDescription{};
+		bindingDescription.binding   = 0;
+		bindingDescription.stride    = sizeof(simple_vertex);
+		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+		std::vector<VkVertexInputAttributeDescription> attributeDescriptions(2);
+		attributeDescriptions[0].binding  = 0;
+		attributeDescriptions[0].location = 0;
+		attributeDescriptions[0].format   = VK_FORMAT_R32G32_SFLOAT;
+		attributeDescriptions[0].offset   = offsetof(simple_vertex, position);
+
+		attributeDescriptions[1].binding  = 0;
+		attributeDescriptions[1].location = 1;
+		attributeDescriptions[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescriptions[1].offset   = offsetof(simple_vertex, color);
+
+		pipelineConfig.vertexInputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+		pipelineConfig.vertexInputInfo.vertexBindingDescriptionCount   = 1;
+		pipelineConfig.vertexInputInfo.pVertexBindingDescriptions      = &bindingDescription;
+		pipelineConfig.vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+		pipelineConfig.vertexInputInfo.pVertexAttributeDescriptions    = attributeDescriptions.data();
+		pipelineConfig.renderPass                                      = vulkan.renderPass();
+
+		/*
+		 * Step 3: create the pipeline and upload the triangle data. The pipeline
+		 * owns its shader modules and default layout after construction.
+		 */
+		engine::Pipeline pipeline(device, "shaders/simple.vert.spv", "shaders/simple.frag.spv", pipelineConfig);
+
 		std::vector<simple_vertex> vulkan_triangle = {
 			{ { -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f } },
 			{ { 0.5f, -0.5f },  { 0.0f, 1.0f, 0.0f } },
@@ -39,29 +69,56 @@ int main() {
 		engine::VertexBuffer vertex_buffer(device, vulkan_triangle.data(), sizeof(simple_vertex) * vulkan_triangle.size());
 		std::printf("Vertex buffer created with size: %zu bytes\n", sizeof(simple_vertex) * vulkan_triangle.size());
 
+		/*
+		 * Step 4: acquire, record, submit, and present one frame at a time.
+		 * beginFrame returns an empty frame when the swapchain was recreated.
+		 */
+		std::uint64_t framesSinceReport = 0;
+		double        fpsReportTime     = window.time();
+
 		while (!window.shouldClose()) {
 			window.pollEvents();
 			if (window.keyPressed(GLFW_KEY_ESCAPE) || window.keyPressed(GLFW_KEY_Q)) {
 				glfwSetWindowShouldClose(window.handle(), GLFW_TRUE);
 			}
+
 			const engine::Frame frame = vulkan.beginFrame();
 			if (frame.commandBuffer == VK_NULL_HANDLE) {
 				continue;
 			}
 
+			/*
+			 * Begin the render pass against the image acquired for this frame.
+			 * The swapchain extent is the framebuffer size Vulkan is actually using.
+			 */
+			VkClearValue clearColor = { { { 1.0f, 1.0f, 1.0f, 1.0f } } };
+
+			VkRenderPassBeginInfo renderPassInfo{};
+			renderPassInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			renderPassInfo.renderPass        = vulkan.renderPass();
+			renderPassInfo.framebuffer       = vulkan.framebuffer(frame.imageIndex);
+			renderPassInfo.renderArea.offset = { 0, 0 };
+			renderPassInfo.renderArea.extent = vulkan.extent();
+			renderPassInfo.clearValueCount   = 1;
+			renderPassInfo.pClearValues      = &clearColor;
+
+			vkCmdBeginRenderPass(frame.commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+			/* Bind state first, then issue the draw commands that use it. */
 			pipeline.bind(frame.commandBuffer);
+
 			VkViewport viewport{};
 			viewport.x        = 0.0f;
 			viewport.y        = 0.0f;
-			viewport.width    = static_cast<float>(window.width());
-			viewport.height   = static_cast<float>(window.height());
+			viewport.width    = static_cast<float>(vulkan.extent().width);
+			viewport.height   = static_cast<float>(vulkan.extent().height);
 			viewport.minDepth = 0.0f;
 			viewport.maxDepth = 1.0f;
 			vkCmdSetViewport(frame.commandBuffer, 0, 1, &viewport);
 
 			VkRect2D scissor{};
 			scissor.offset = { 0, 0 };
-			scissor.extent = { static_cast<uint32_t>(window.width()), static_cast<uint32_t>(window.height()) };
+			scissor.extent = vulkan.extent();
 			vkCmdSetScissor(frame.commandBuffer, 0, 1, &scissor);
 
 			VkBuffer     vertexBuffers[] = { vertex_buffer.buffer() };
@@ -70,23 +127,26 @@ int main() {
 
 			vkCmdDraw(frame.commandBuffer, 3, 1, 0, 0);
 
+			vkCmdEndRenderPass(frame.commandBuffer);
+
 			vulkan.endFrame(frame);
 
-			// if (window2 && vulkan2) {
-			// 	if (!window2->shouldClose()) {
-			// 		if (window2->keyPressed(GLFW_KEY_ESCAPE) || window2->keyPressed(GLFW_KEY_Q)) {
-			// 			glfwSetWindowShouldClose(window2->handle(), GLFW_TRUE);
-			// 		}
-			// 		const engine::Frame frame2 = vulkan2->beginFrame();
-			// 		if (frame2.commandBuffer != VK_NULL_HANDLE) {
-			// 			vulkan2->endFrame(frame2);
-			// 		}
-			// 	} else {
-			// 		vulkan2.reset();
-			// 		window2.reset();
-			// 	}
-			// }
+			/* Report the number of frames presented over the last second. */
+			++framesSinceReport;
+			const double now     = window.time();
+			const double elapsed = now - fpsReportTime;
+			if (elapsed >= 1.0) {
+				const double fps = static_cast<double>(framesSinceReport) / elapsed;
+				std::printf("\r\033[KFPS: %.1f", fps);
+				std::fflush(stdout);
+
+				framesSinceReport = 0;
+				fpsReportTime     = now;
+			}
 		}
+
+		/* Leave the cursor on a fresh line once the loop exits. */
+		std::printf("\n");
 	} catch (const std::exception &error) {
 		std::fprintf(stderr, "Fatal error: %s\n", error.what());
 		return 1;
