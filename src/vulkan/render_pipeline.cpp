@@ -172,7 +172,7 @@ Pipeline::Pipeline(
 		}
 		if (owns_layout_ && layout_ != VK_NULL_HANDLE) {
 			vkDestroyPipelineLayout(device_.device(), layout_, nullptr);
-			layout_ = VK_NULL_HANDLE;
+			layout_      = VK_NULL_HANDLE;
 			owns_layout_ = false;
 		}
 		throw;
@@ -305,4 +305,4 @@ PipelineConfigInfo Pipeline::defaultPipelineConfigInfo() {
 	return configInfo;
 }
 
-}
+} // namespace engine

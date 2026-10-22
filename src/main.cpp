@@ -10,10 +10,12 @@
 #include <vector>
 
 int vulkan_triangle();
+int sierpinski_triangle(int n);
 
 int main() {
 	try {
-		return vulkan_triangle();
+		// return vulkan_triangle();
+		return sierpinski_triangle(1);
 	} catch (const std::exception &e) {
 		std::fprintf(stderr, "Error: %s\n", e.what());
 		return EXIT_FAILURE;
@@ -163,4 +165,78 @@ int vulkan_triangle() {
 		return 1;
 	}
 	return 0;
+}
+
+int sierpinski_triangle(int n) {
+	try {
+		engine::GLFWContext   glfw;
+		engine::Window        window({ 500, 500, "Engine", true });
+		engine::VulkanDevice  device(window.handle(), "Engine");
+		engine::VulkanContext vulkan(device, &window);
+
+		engine::PipelineConfigInfo pipelineConfig = engine::Pipeline::defaultPipelineConfigInfo();
+
+		// set up the pipeline to take n
+
+		engine::Pipeline pipeline(device, "shaders/sierpinski_triangle.vert.spv", "shaders/sierpinski_triangle.frag.spv", pipelineConfig);
+
+		// set up the pipeline to take n
+
+		while (!window.shouldClose()) {
+			window.pollEvents();
+			if (window.keyPressed(GLFW_KEY_ESCAPE) || window.keyPressed(GLFW_KEY_Q)) {
+				glfwSetWindowShouldClose(window.handle(), GLFW_TRUE);
+			}
+
+			const engine::Frame frame = vulkan.beginFrame();
+			if (frame.commandBuffer == VK_NULL_HANDLE) {
+				continue;
+			}
+
+			VkClearValue clearColor = { { { 1.0f, 1.0f, 1.0f, 1.0f } } };
+
+			VkRenderPassBeginInfo renderPassInfo{};
+			renderPassInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			renderPassInfo.renderPass        = vulkan.renderPass();
+			renderPassInfo.framebuffer       = vulkan.framebuffer(frame.imageIndex);
+			renderPassInfo.renderArea.offset = { 0, 0 };
+			renderPassInfo.renderArea.extent = vulkan.extent();
+			renderPassInfo.clearValueCount   = 1;
+			renderPassInfo.pClearValues      = &clearColor;
+
+			vkCmdBeginRenderPass(frame.commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+			pipeline.bind(frame.commandBuffer);
+
+			VkViewport viewport{};
+			viewport.x        = 0.0f;
+			viewport.y        = 0.0f;
+			viewport.width    = static_cast<float>(vulkan.extent().width);
+			viewport.height   = static_cast<float>(vulkan.extent().height);
+			viewport.minDepth = 0.0f;
+			viewport.maxDepth = 1.0f;
+			vkCmdSetViewport(frame.commandBuffer, 0, 1, &viewport);
+
+			VkRect2D scissor{};
+			scissor.offset = { 0, 0 };
+			scissor.extent = vulkan.extent();
+			vkCmdSetScissor(frame.commandBuffer, 0, 1, &scissor);
+
+			// pass n
+
+			vkCmdDraw(frame.commandBuffer, 3, 1, 0, 0);
+
+			vkCmdEndRenderPass(frame.commandBuffer);
+
+			vulkan.endFrame(frame);
+		}
+	}
+
+	std::printf("\n");
+}
+catch (const std::exception &error) {
+	std::fprintf(stderr, "Fatal error: %s\n", error.what());
+	return 1;
+}
+return 0;
 }

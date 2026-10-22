@@ -3,6 +3,13 @@
 
 Meant to be a project to learn Vulkan but also set myself up for more complex projects where I dont have to worry about boilerplate as much.
 
+## TODO
+
+- Sierpinski triangle
+- Push constants
+- Renderer encapsulation
+- Scene abstraction
+
 ## Notes
 
 ### Vulkan mental model
