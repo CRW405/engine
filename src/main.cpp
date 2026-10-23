@@ -4,18 +4,19 @@
 #include "vulkan/vulkan_context.hpp"
 #include "vulkan/vulkan_device.hpp"
 
+#include <cglm/cglm.h>
+
 #include <cstdint>
 #include <cstdio>
 #include <exception>
+#include <stdexcept>
 #include <vector>
 
 int vulkan_triangle();
-int sierpinski_triangle(int n);
 
 int main() {
 	try {
-		// return vulkan_triangle();
-		return sierpinski_triangle(1);
+		return vulkan_triangle();
 	} catch (const std::exception &e) {
 		std::fprintf(stderr, "Error: %s\n", e.what());
 		return EXIT_FAILURE;
@@ -28,6 +29,7 @@ struct simple_vertex {
 };
 
 int vulkan_triangle() {
+	std::printf("Running Vulkan Triangle\n");
 	try {
 		/*
 		 * Step 1: create the process, window, Vulkan device, and presentation
@@ -67,6 +69,23 @@ int vulkan_triangle() {
 		pipelineConfig.vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
 		pipelineConfig.vertexInputInfo.pVertexAttributeDescriptions    = attributeDescriptions.data();
 		pipelineConfig.renderPass                                      = vulkan.renderPass();
+
+		/* Push constant setup */
+		VkPushConstantRange pushConstantRange{};
+		pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		pushConstantRange.offset     = 0;
+		pushConstantRange.size       = sizeof(mat4);
+
+		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+		pipelineLayoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		pipelineLayoutInfo.pushConstantRangeCount = 1;
+		pipelineLayoutInfo.pPushConstantRanges    = &pushConstantRange;
+
+		VkPipelineLayout pipelineLayout;
+		if (vkCreatePipelineLayout(device.device(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create pipeline layout");
+		}
+		pipelineConfig.pipelineLayout = pipelineLayout;
 
 		/*
 		 * Step 3: create the pipeline and upload the triangle data. The pipeline
@@ -138,6 +157,19 @@ int vulkan_triangle() {
 			VkDeviceSize offsets[]       = { 0 };
 			vkCmdBindVertexBuffers(frame.commandBuffer, 0, 1, vertexBuffers, offsets);
 
+			/* Push constant data */
+			mat4  Transform    = GLM_MAT4_IDENTITY_INIT;
+			float angle        = static_cast<float>(window.time() * glm_rad(90.0f)); // Rotate 90 degrees per second
+			vec3  rotationAxis = { 0.0f, 0.0f, 1.0f };
+			glm_rotate(Transform, angle, rotationAxis);
+			vkCmdPushConstants(
+			    frame.commandBuffer,
+			    pipelineLayout,
+			    VK_SHADER_STAGE_VERTEX_BIT,
+			    0,
+			    sizeof(mat4),
+			    Transform);
+
 			vkCmdDraw(frame.commandBuffer, 3, 1, 0, 0);
 
 			vkCmdEndRenderPass(frame.commandBuffer);
@@ -165,78 +197,4 @@ int vulkan_triangle() {
 		return 1;
 	}
 	return 0;
-}
-
-int sierpinski_triangle(int n) {
-	try {
-		engine::GLFWContext   glfw;
-		engine::Window        window({ 500, 500, "Engine", true });
-		engine::VulkanDevice  device(window.handle(), "Engine");
-		engine::VulkanContext vulkan(device, &window);
-
-		engine::PipelineConfigInfo pipelineConfig = engine::Pipeline::defaultPipelineConfigInfo();
-
-		// set up the pipeline to take n
-
-		engine::Pipeline pipeline(device, "shaders/sierpinski_triangle.vert.spv", "shaders/sierpinski_triangle.frag.spv", pipelineConfig);
-
-		// set up the pipeline to take n
-
-		while (!window.shouldClose()) {
-			window.pollEvents();
-			if (window.keyPressed(GLFW_KEY_ESCAPE) || window.keyPressed(GLFW_KEY_Q)) {
-				glfwSetWindowShouldClose(window.handle(), GLFW_TRUE);
-			}
-
-			const engine::Frame frame = vulkan.beginFrame();
-			if (frame.commandBuffer == VK_NULL_HANDLE) {
-				continue;
-			}
-
-			VkClearValue clearColor = { { { 1.0f, 1.0f, 1.0f, 1.0f } } };
-
-			VkRenderPassBeginInfo renderPassInfo{};
-			renderPassInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-			renderPassInfo.renderPass        = vulkan.renderPass();
-			renderPassInfo.framebuffer       = vulkan.framebuffer(frame.imageIndex);
-			renderPassInfo.renderArea.offset = { 0, 0 };
-			renderPassInfo.renderArea.extent = vulkan.extent();
-			renderPassInfo.clearValueCount   = 1;
-			renderPassInfo.pClearValues      = &clearColor;
-
-			vkCmdBeginRenderPass(frame.commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-			pipeline.bind(frame.commandBuffer);
-
-			VkViewport viewport{};
-			viewport.x        = 0.0f;
-			viewport.y        = 0.0f;
-			viewport.width    = static_cast<float>(vulkan.extent().width);
-			viewport.height   = static_cast<float>(vulkan.extent().height);
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(frame.commandBuffer, 0, 1, &viewport);
-
-			VkRect2D scissor{};
-			scissor.offset = { 0, 0 };
-			scissor.extent = vulkan.extent();
-			vkCmdSetScissor(frame.commandBuffer, 0, 1, &scissor);
-
-			// pass n
-
-			vkCmdDraw(frame.commandBuffer, 3, 1, 0, 0);
-
-			vkCmdEndRenderPass(frame.commandBuffer);
-
-			vulkan.endFrame(frame);
-		}
-	}
-
-	std::printf("\n");
-}
-catch (const std::exception &error) {
-	std::fprintf(stderr, "Fatal error: %s\n", error.what());
-	return 1;
-}
-return 0;
 }
