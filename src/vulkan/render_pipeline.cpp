@@ -5,11 +5,31 @@
 
 namespace engine {
 
-/*
- * Pipeline creation has two independent inputs: shader modules and the
- * fixed-function configuration. The shader modules are temporary construction
- * resources; the pipeline and its layout remain available for command recording.
- */
+// -----------------------------------------------------------------------------
+// Vertex input and graphics pipeline setup
+// -----------------------------------------------------------------------------
+VertexInputDescription &VertexInputDescription::addBinding(
+    uint32_t binding,
+    uint32_t stride,
+    VkVertexInputRate inputRate) {
+	bindings.push_back({ binding, stride, inputRate });
+	return *this;
+}
+
+VertexInputDescription &VertexInputDescription::addAttribute(
+    uint32_t location,
+    uint32_t binding,
+    VkFormat format,
+    uint32_t offset) {
+	attributes.push_back({ location, binding, format, offset });
+	return *this;
+}
+
+// -----------------------------------------------------------------------------
+// Pipeline creation has two independent inputs: shader modules and the
+// fixed-function configuration. The shader modules are temporary construction
+// resources; the pipeline and its layout remain available for command recording.
+// -----------------------------------------------------------------------------
 PipelineConfigInfo::PipelineConfigInfo(const PipelineConfigInfo &other)
     : vertexInputInfo(other.vertexInputInfo),
       viewportInfo(other.viewportInfo),
@@ -23,7 +43,9 @@ PipelineConfigInfo::PipelineConfigInfo(const PipelineConfigInfo &other)
       dynamicStateInfo(other.dynamicStateInfo),
       pipelineLayout(other.pipelineLayout),
       renderPass(other.renderPass),
-      subpass(other.subpass) {
+      subpass(other.subpass),
+      vertexBindings_(other.vertexBindings_),
+      vertexAttributes_(other.vertexAttributes_) {
 	refreshInternalPointers();
 }
 
@@ -42,6 +64,8 @@ PipelineConfigInfo &PipelineConfigInfo::operator=(const PipelineConfigInfo &othe
 		pipelineLayout       = other.pipelineLayout;
 		renderPass           = other.renderPass;
 		subpass              = other.subpass;
+		vertexBindings_      = other.vertexBindings_;
+		vertexAttributes_    = other.vertexAttributes_;
 		refreshInternalPointers();
 	}
 	return *this;
@@ -60,7 +84,9 @@ PipelineConfigInfo::PipelineConfigInfo(PipelineConfigInfo &&other) noexcept
       dynamicStateInfo(other.dynamicStateInfo),
       pipelineLayout(other.pipelineLayout),
       renderPass(other.renderPass),
-      subpass(other.subpass) {
+      subpass(other.subpass),
+      vertexBindings_(std::move(other.vertexBindings_)),
+      vertexAttributes_(std::move(other.vertexAttributes_)) {
 	refreshInternalPointers();
 }
 
@@ -79,18 +105,30 @@ PipelineConfigInfo &PipelineConfigInfo::operator=(PipelineConfigInfo &&other) no
 		pipelineLayout       = other.pipelineLayout;
 		renderPass           = other.renderPass;
 		subpass              = other.subpass;
+		vertexBindings_      = std::move(other.vertexBindings_);
+		vertexAttributes_    = std::move(other.vertexAttributes_);
 		refreshInternalPointers();
 	}
 	return *this;
 }
 
 void PipelineConfigInfo::refreshInternalPointers() noexcept {
-	/*
-	 * These pointers refer to members owned by this config. Refreshing them is
-	 * required after a copy or move because the object's address may change.
-	 */
+	// -------------------------------------------------------------------------
+	// These pointers refer to members owned by this config. Refreshing them is
+	// required after a copy or move because the object's address may change.
+	// -------------------------------------------------------------------------
 	colorBlendInfo.pAttachments     = &colorBlendAttachment;
 	dynamicStateInfo.pDynamicStates = dynamicStates.data();
+	vertexInputInfo.pVertexBindingDescriptions    = vertexBindings_.data();
+	vertexInputInfo.vertexBindingDescriptionCount  = static_cast<uint32_t>(vertexBindings_.size());
+	vertexInputInfo.pVertexAttributeDescriptions   = vertexAttributes_.data();
+	vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributes_.size());
+}
+
+void PipelineConfigInfo::setVertexInput(const VertexInputDescription &description) {
+	vertexBindings_   = description.bindings;
+	vertexAttributes_ = description.attributes;
+	refreshInternalPointers();
 }
 
 Pipeline::Pipeline(
@@ -100,10 +138,10 @@ Pipeline::Pipeline(
     const PipelineConfigInfo &configInfo)
     : device_(device) {
 
-	/*
-	 * Step 1: load shader bytecode and create temporary shader modules. The
-	 * modules are needed only while the graphics pipeline is being built.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 1: load shader bytecode and create temporary shader modules. The
+	// modules are needed only while the graphics pipeline is being built.
+	// -------------------------------------------------------------------------
 	auto vertCode = readFile(vertFilepath);
 	auto fragCode = readFile(fragFilepath);
 
@@ -112,7 +150,7 @@ Pipeline::Pipeline(
 		createShaderModule(fragCode, &fragShaderModule_);
 
 		if (configInfo.pipelineLayout == VK_NULL_HANDLE) {
-			/* Use an empty layout until descriptors or push constants are needed. */
+			// Use an empty layout until descriptors or push constants are needed.
 			VkPipelineLayoutCreateInfo layoutInfo{};
 			layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 			if (vkCreatePipelineLayout(device_.device(), &layoutInfo, nullptr, &layout_) != VK_SUCCESS) {
@@ -123,10 +161,10 @@ Pipeline::Pipeline(
 			layout_ = configInfo.pipelineLayout;
 		}
 
-		/*
-		 * Step 2: connect shader stages to the fixed-function configuration and
-		 * create the graphics pipeline for the context's render pass.
-		 */
+		// -------------------------------------------------------------------------
+		// Step 2: connect shader stages to the fixed-function configuration and
+		// create the graphics pipeline for the context's render pass.
+		// -------------------------------------------------------------------------
 		VkPipelineShaderStageCreateInfo shaderStages[2]{};
 		shaderStages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 		shaderStages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
@@ -211,12 +249,12 @@ Pipeline::Pipeline(Pipeline &&other) noexcept
 }
 
 void Pipeline::bind(VkCommandBuffer commandBuffer) {
-	/* Binding makes this pipeline the active graphics state for later draws. */
+	// Binding makes this pipeline the active graphics state for later draws.
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
 }
 
 std::vector<char> Pipeline::readFile(const std::string &filepath) {
-	/* Shader binaries are read as raw bytes for VkShaderModule creation. */
+	// Shader binaries are read as raw bytes for VkShaderModule creation.
 	std::ifstream file(filepath, std::ios::ate | std::ios::binary);
 
 	if (!file.is_open()) {
@@ -234,7 +272,7 @@ std::vector<char> Pipeline::readFile(const std::string &filepath) {
 }
 
 void Pipeline::createShaderModule(const std::vector<char> &code, VkShaderModule *shaderModule) {
-	/* Vulkan consumes SPIR-V as 32-bit words even though files are byte streams. */
+	// Vulkan consumes SPIR-V as 32-bit words even though files are byte streams.
 	VkShaderModuleCreateInfo createInfo{};
 	createInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	createInfo.codeSize = code.size();
@@ -246,10 +284,10 @@ void Pipeline::createShaderModule(const std::vector<char> &code, VkShaderModule 
 }
 
 PipelineConfigInfo Pipeline::defaultPipelineConfigInfo() {
-	/*
-	 * Establish the smallest useful triangle pipeline: fixed-function defaults,
-	 * dynamic viewport/scissor state, and no depth attachment.
-	 */
+	// -------------------------------------------------------------------------
+	// Establish the smallest useful triangle pipeline: fixed-function defaults,
+	// dynamic viewport/scissor state, and no depth attachment.
+	// -------------------------------------------------------------------------
 	PipelineConfigInfo configInfo{};
 
 	configInfo.inputAssemblyInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;

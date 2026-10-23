@@ -1,0 +1,52 @@
+#include "pipeline_layout.hpp"
+
+#include <stdexcept>
+
+namespace engine {
+
+// -----------------------------------------------------------------------------
+// Pipeline layout lifetime
+// -----------------------------------------------------------------------------
+PipelineLayout::PipelineLayout(
+    VulkanDevice &device,
+    const VkDescriptorSetLayout *descriptorSetLayouts,
+    std::uint32_t descriptorSetLayoutCount,
+    const VkPushConstantRange *pushConstantRanges,
+    std::uint32_t pushConstantRangeCount)
+    : device_(device) {
+	VkPipelineLayoutCreateInfo createInfo{};
+	createInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	createInfo.setLayoutCount         = descriptorSetLayoutCount;
+	createInfo.pSetLayouts            = descriptorSetLayouts;
+	createInfo.pushConstantRangeCount = pushConstantRangeCount;
+	createInfo.pPushConstantRanges    = pushConstantRanges;
+
+	if (vkCreatePipelineLayout(device_.device(), &createInfo, nullptr, &layout_) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create pipeline layout");
+	}
+}
+
+PipelineLayout::PipelineLayout(
+    VulkanDevice &device,
+    std::initializer_list<VkDescriptorSetLayout> descriptorSetLayouts,
+    std::initializer_list<VkPushConstantRange> pushConstantRanges)
+    : PipelineLayout(
+          device,
+          descriptorSetLayouts.begin(),
+          static_cast<std::uint32_t>(descriptorSetLayouts.size()),
+          pushConstantRanges.begin(),
+          static_cast<std::uint32_t>(pushConstantRanges.size())) {}
+
+PipelineLayout::PipelineLayout(
+    VulkanDevice &device,
+    std::initializer_list<VkPushConstantRange> pushConstantRanges)
+    : PipelineLayout(device, nullptr, 0, pushConstantRanges.begin(),
+                     static_cast<std::uint32_t>(pushConstantRanges.size())) {}
+
+PipelineLayout::~PipelineLayout() {
+	if (layout_ != VK_NULL_HANDLE && device_.device() != VK_NULL_HANDLE) {
+		vkDestroyPipelineLayout(device_.device(), layout_, nullptr);
+	}
+}
+
+}

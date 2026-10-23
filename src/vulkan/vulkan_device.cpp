@@ -8,11 +8,13 @@
 
 namespace engine {
 
-/*
- * Validation is kept enabled for learning and development. The debug messenger
- * is attached to instance creation so validation can report setup errors as
- * well as errors that occur after the instance exists.
- */
+// -----------------------------------------------------------------------------
+// Vulkan instance, device, and queue setup
+//
+// Validation is kept enabled for learning and development. The debug messenger
+// is attached to instance creation so validation can report setup errors as
+// well as errors that occur after the instance exists.
+// -----------------------------------------------------------------------------
 constexpr bool        enable_validation   = true;
 constexpr const char *validation_layer    = "VK_LAYER_KHRONOS_validation";
 constexpr const char *swapchain_extension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
@@ -42,7 +44,7 @@ VkDebugUtilsMessengerCreateInfoEXT debugMessengerInfo() {
 }
 
 bool instanceExtensionAvailable(const char *name) {
-	/* Query the loader before adding optional instance extensions. */
+	// Query the loader before adding optional instance extensions.
 	std::uint32_t count = 0;
 	vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
 	std::vector<VkExtensionProperties> extensions(count);
@@ -53,7 +55,7 @@ bool instanceExtensionAvailable(const char *name) {
 }
 
 bool validationAvailable() {
-	/* Validation is required by this development-oriented bootstrap. */
+	// Validation is required by this development-oriented bootstrap.
 	std::uint32_t count = 0;
 	vkEnumerateInstanceLayerProperties(&count, nullptr);
 	std::vector<VkLayerProperties> layers(count);
@@ -64,7 +66,7 @@ bool validationAvailable() {
 }
 
 bool swapchainExtensionAvailable(VkPhysicalDevice device) {
-	/* A device must expose swapchain support before it can present. */
+	// A device must expose swapchain support before it can present.
 	std::uint32_t count = 0;
 	vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
 	std::vector<VkExtensionProperties> extensions(count);
@@ -75,10 +77,10 @@ bool swapchainExtensionAvailable(VkPhysicalDevice device) {
 }
 
 VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_name_(std::move(app_name)) {
-	/*
-	 * Step 1: create the instance and a temporary surface used only to evaluate
-	 * queue families during physical-device selection.
-	 */
+	//
+	// Step 1: create the instance and a temporary surface used only to evaluate
+	// queue families during physical-device selection.
+	//
 	if (main_window == nullptr) {
 		throw std::invalid_argument("VulkanDevice requires a valid window");
 	}
@@ -94,7 +96,7 @@ VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_
 	}
 
 	try {
-		/* Step 2: choose a device and create the logical queues used by rendering. */
+		// Step 2: choose a device and create the logical queues used by rendering.
 		selectPhysicalDevice(selection_surface);
 		createLogicalDevice(selection_surface);
 	} catch (...) {
@@ -109,7 +111,7 @@ VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_
 
 VulkanDevice::~VulkanDevice() {
 	if (device_ != VK_NULL_HANDLE) {
-		vkDeviceWaitIdle(device_);
+		waitIdle();
 		vkDestroyDevice(device_, nullptr);
 	}
 	destroyDebugMessenger();
@@ -118,19 +120,27 @@ VulkanDevice::~VulkanDevice() {
 	}
 }
 
+void VulkanDevice::waitIdle() const {
+	if (device_ != VK_NULL_HANDLE) {
+		if (vkDeviceWaitIdle(device_) != VK_SUCCESS) {
+			throw std::runtime_error("failed to wait for Vulkan device");
+		}
+	}
+}
+
 void VulkanDevice::createInstance(const std::string app_name) {
-	/*
-	 * Step 1: verify development layers and gather the extensions required by
-	 * GLFW. The debug extension is added only when the loader provides it.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 1: verify development layers and gather the extensions required by
+	// GLFW. The debug extension is added only when the loader provides it.
+	// -------------------------------------------------------------------------
 	if (enable_validation && !validationAvailable()) {
 		throw std::runtime_error("Vulkan validation layer is unavailable");
 	}
 
-	/*
-	 * Step 2: describe the application and create the Vulkan instance. The
-	 * debug messenger create info is chained here to capture startup messages.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 2: describe the application and create the Vulkan instance. The
+	// debug messenger create info is chained here to capture startup messages.
+	// -------------------------------------------------------------------------
 	VkApplicationInfo app_info{};
 	app_info.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	app_info.pApplicationName   = app_name.c_str();
@@ -173,7 +183,7 @@ void VulkanDevice::createInstance(const std::string app_name) {
 }
 
 void VulkanDevice::setupDebugMessenger() {
-	/* Create the callback that reports validation messages after instance setup. */
+	// Create the callback that reports validation messages after instance setup.
 	const auto create_messenger = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
 	    vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT"));
 	if (create_messenger == nullptr) {
@@ -186,7 +196,7 @@ void VulkanDevice::setupDebugMessenger() {
 }
 
 void VulkanDevice::destroyDebugMessenger() noexcept {
-	/* The messenger must be removed before its owning instance is destroyed. */
+	// The messenger must be removed before its owning instance is destroyed.
 	if (instance_ == VK_NULL_HANDLE || debug_messenger_ == VK_NULL_HANDLE) {
 		return;
 	}
@@ -199,10 +209,10 @@ void VulkanDevice::destroyDebugMessenger() noexcept {
 }
 
 QueueFamilies VulkanDevice::findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) const {
-	/*
-	 * Walk every queue family once and record the first graphics and present
-	 * queues. A device is usable only when both capabilities are available.
-	 */
+	//
+	// Walk every queue family once and record the first graphics and present
+	// queues. A device is usable only when both capabilities are available.
+	//
 	QueueFamilies result{};
 	std::uint32_t count = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
@@ -230,10 +240,10 @@ QueueFamilies VulkanDevice::findQueueFamilies(VkPhysicalDevice device, VkSurface
 }
 
 void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
-	/*
-	 * Prefer the first device that can draw, present, and expose the swapchain
-	 * extension. This keeps selection predictable while the bootstrap is small.
-	 */
+	//
+	// Prefer the first device that can draw, present, and expose the swapchain
+	// extension. This keeps selection predictable while the bootstrap is small.
+	//
 	std::uint32_t count = 0;
 	if (vkEnumeratePhysicalDevices(instance_, &count, nullptr) != VK_SUCCESS || count == 0) {
 		throw std::runtime_error("no Vulkan devices found");
@@ -258,10 +268,10 @@ void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
 }
 
 void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface) {
-	/*
-	 * Create one queue for each distinct family. When graphics and presentation
-	 * share a family, the set removes the duplicate automatically.
-	 */
+	//
+	// Create one queue for each distinct family. When graphics and presentation
+	// share a family, the set removes the duplicate automatically.
+	//
 	const QueueFamilies                  queues   = findQueueFamilies(physical_device_, surface);
 	const float                          priority = 1.0f;
 	std::vector<VkDeviceQueueCreateInfo> queue_infos;

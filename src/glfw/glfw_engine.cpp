@@ -5,12 +5,14 @@
 
 namespace engine {
 
-/*
- * GLFWContext controls the process-wide GLFW lifetime. Window owns one GLFW
- * window and exposes only the operations needed by the renderer and main loop.
- */
+// -----------------------------------------------------------------------------
+// GLFW lifetime and window management
+//
+// GLFWContext controls the process-wide GLFW lifetime. Window owns one GLFW
+// window and exposes only the operations needed by the renderer and main loop.
+// -----------------------------------------------------------------------------
 GLFWContext::GLFWContext() {
-	/* Step 1: initialize GLFW before any window or Vulkan surface is created. */
+	// Step 1: initialize GLFW before any window or Vulkan surface is created.
 	if (!glfwInit()) {
 		throw std::runtime_error("Failed to initialize GLFW");
 	}
@@ -21,12 +23,12 @@ GLFWContext::~GLFWContext() {
 }
 
 Window::Window(const WindowConfig &config) {
-	/* Step 2: reject invalid settings before passing them to GLFW. */
+	// Step 2: reject invalid settings before passing them to GLFW.
 	if (config.width <= 0 || config.height <= 0 || config.title.empty()) {
 		throw std::invalid_argument("window dimensions and title must be valid");
 	}
 
-	/* Step 3: create a window with Vulkan presentation handled externally. */
+	// Step 3: create a window with Vulkan presentation handled externally.
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GLFW_TRUE : GLFW_FALSE);
 	glfwWindowHintString(GLFW_WAYLAND_APP_ID, "make-me-float");
@@ -37,7 +39,7 @@ Window::Window(const WindowConfig &config) {
 }
 
 Window::~Window() {
-	/* Destroying the window releases the native handle owned by this wrapper. */
+	// Destroying the window releases the native handle owned by this wrapper.
 	if (window_ != nullptr) {
 		glfwDestroyWindow(window_);
 	}
@@ -48,7 +50,7 @@ Window::Window(Window &&other) noexcept : window_(other.window_) {
 }
 
 Window &Window::operator=(Window &&other) noexcept {
-	/* Move assignment replaces this wrapper's owned native handle. */
+	// Move assignment replaces this wrapper's owned native handle.
 	if (this != &other) {
 		if (window_ != nullptr) {
 			glfwDestroyWindow(window_);

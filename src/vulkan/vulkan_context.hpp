@@ -20,11 +20,13 @@ struct Frame {
 	std::uint32_t   frameIndex    = 0;
 };
 
-/*
- * Owns the presentation resources for one window. The device is shared, while
- * the surface, swapchain, render pass, framebuffers, and frame synchronization
- * belong to this context.
- */
+// ============================================================================
+// Window-owned Vulkan rendering resources
+//
+// Owns the presentation resources for one window. The device is shared, while
+// the surface, swapchain, render pass, framebuffers, and frame synchronization
+// belong to this context.
+// ============================================================================
 class VulkanContext {
   public:
 	explicit VulkanContext(VulkanDevice &device, Window *window);
@@ -46,6 +48,9 @@ class VulkanContext {
 
 	[[nodiscard]] Frame beginFrame();
 	void                endFrame(const Frame &frame);
+	void                beginRenderPass(const Frame &frame, VkClearValue clearValue);
+	void                endRenderPass(const Frame &frame);
+	void                setViewportAndScissor(VkCommandBuffer commandBuffer) const;
 	void                recreateSwapchain();
 	void                notifyFramebufferResized() { framebuffer_resized_ = true; }
 

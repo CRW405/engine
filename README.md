@@ -5,10 +5,9 @@ Meant to be a project to learn Vulkan but also set myself up for more complex pr
 
 ## TODO
 
-- Sierpinski triangle
-- Push constants
-- Renderer encapsulation
-- Scene abstraction
+- Sierpinski triangle shader
+- Renderer encapsulation // kinda, still want to keep things lowish level and explicit
+- Scene abstraction // may save this for a seperate project
 
 ## Notes
 

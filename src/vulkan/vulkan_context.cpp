@@ -6,13 +6,15 @@
 
 namespace engine {
 
-/*
- * A frame follows the same sequence on every iteration: acquire an image,
- * record commands into its command buffer, submit them, and present the image.
- * Swapchain recreation replaces only resources that depend on the window size.
- */
+// -----------------------------------------------------------------------------
+// Swapchain, render-pass, and frame lifecycle
+//
+// A frame follows the same sequence on every iteration: acquire an image,
+// record commands into its command buffer, submit them, and present the image.
+// Swapchain recreation replaces only resources that depend on the window size.
+// -----------------------------------------------------------------------------
 void framebufferResizeCallback(GLFWwindow *window, int, int) {
-	/* The callback records the event; swapchain work stays on the render thread. */
+	// The callback records the event; swapchain work stays on the render thread.
 	auto *context = static_cast<VulkanContext *>(glfwGetWindowUserPointer(window));
 	if (context != nullptr) {
 		context->notifyFramebufferResized();
@@ -20,10 +22,10 @@ void framebufferResizeCallback(GLFWwindow *window, int, int) {
 }
 
 VulkanContext::VulkanContext(VulkanDevice &device, Window *window) : device_(device), window_(window) {
-	/*
-	 * Step 1: connect the window callback, create the surface, then build the
-	 * presentation resources in dependency order.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 1: connect the window callback, create the surface, then build the
+	// presentation resources in dependency order.
+	// -------------------------------------------------------------------------
 	if (window_ == nullptr || window_->handle() == nullptr) {
 		throw std::invalid_argument("VulkanContext requires a valid window");
 	}
@@ -49,7 +51,7 @@ VulkanContext::VulkanContext(VulkanDevice &device, Window *window) : device_(dev
 }
 
 VulkanContext::~VulkanContext() {
-	/* Wait for GPU work before releasing resources referenced by command buffers. */
+	// Wait for GPU work before releasing resources referenced by command buffers.
 	destroyWindowResources();
 	if (surface_ != VK_NULL_HANDLE) {
 		vkDestroySurfaceKHR(device_.instance(), surface_, nullptr);
@@ -62,7 +64,7 @@ VulkanContext::~VulkanContext() {
 }
 
 void VulkanContext::createSurface() {
-	/* The surface connects the Vulkan instance to this window system window. */
+	// The surface connects the Vulkan instance to this window system window.
 	if (glfwCreateWindowSurface(device_.instance(), window_->handle(), nullptr, &surface_) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create window surface");
 	}
@@ -70,7 +72,7 @@ void VulkanContext::createSurface() {
 
 VulkanContext::SwapchainSupportDetails VulkanContext::querySwapchainSupport(
     VkPhysicalDevice physical_device, VkSurfaceKHR surface) const {
-	/* Collect capabilities, formats, and present modes before choosing settings. */
+	// Collect capabilities, formats, and present modes before choosing settings.
 	SwapchainSupportDetails result{};
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &result.capabilities);
 
@@ -87,10 +89,10 @@ VulkanContext::SwapchainSupportDetails VulkanContext::querySwapchainSupport(
 }
 
 void VulkanContext::createSwapchain() {
-	/*
-	 * Step 2: choose format, present mode, extent, image count, and sharing mode
-	 * from the surface capabilities reported by the selected physical device.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 2: choose format, present mode, extent, image count, and sharing mode
+	// from the surface capabilities reported by the selected physical device.
+	// -------------------------------------------------------------------------
 	const QueueFamilies queues = device_.findQueueFamilies(device_.physicalDevice(), surface_);
 	if (!queues.hasGraphics || !queues.hasPresent) {
 		throw std::runtime_error("Vulkan device cannot present to this window surface");
@@ -154,7 +156,7 @@ void VulkanContext::createSwapchain() {
 		throw std::runtime_error("failed to create swapchain");
 	}
 
-	/* Create one color view for every image owned by the swapchain. */
+	// Create one color view for every image owned by the swapchain.
 	vkGetSwapchainImagesKHR(device_.device(), swapchain_, &image_count, nullptr);
 	swapchain_images_.resize(image_count);
 	vkGetSwapchainImagesKHR(device_.device(), swapchain_, &image_count, swapchain_images_.data());
@@ -177,10 +179,10 @@ void VulkanContext::createSwapchain() {
 }
 
 void VulkanContext::createCommandResources() {
-	/*
-	 * Step 5: allocate per-frame command buffers and synchronization objects.
-	 * Fences begin signaled so the first frame does not wait forever.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 5: allocate per-frame command buffers and synchronization objects.
+	// Fences begin signaled so the first frame does not wait forever.
+	// -------------------------------------------------------------------------
 	const QueueFamilies     queues = device_.findQueueFamilies(device_.physicalDevice(), surface_);
 	VkCommandPoolCreateInfo pool{};
 	pool.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -221,10 +223,10 @@ void VulkanContext::createCommandResources() {
 }
 
 Frame VulkanContext::beginFrame() {
-	/*
-	 * Step 6: wait for this frame slot, acquire a swapchain image, then begin
-	 * recording its command buffer.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 6: wait for this frame slot, acquire a swapchain image, then begin
+	// recording its command buffer.
+	// -------------------------------------------------------------------------
 	if (framebuffer_resized_) {
 		framebuffer_resized_ = false;
 		recreateSwapchain();
@@ -262,10 +264,10 @@ Frame VulkanContext::beginFrame() {
 }
 
 void VulkanContext::endFrame(const Frame &frame) {
-	/*
-	 * Step 7: finish recording, submit the command buffer, and present the image.
-	 * Presentation results can request another swapchain recreation.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 7: finish recording, submit the command buffer, and present the image.
+	// Presentation results can request another swapchain recreation.
+	// -------------------------------------------------------------------------
 	if (frame.commandBuffer == VK_NULL_HANDLE) {
 		return;
 	}
@@ -303,11 +305,49 @@ void VulkanContext::endFrame(const Frame &frame) {
 	current_frame_ = (current_frame_ + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
+void VulkanContext::beginRenderPass(const Frame &frame, VkClearValue clearValue) {
+	if (frame.commandBuffer == VK_NULL_HANDLE) {
+		return;
+	}
+
+	VkRenderPassBeginInfo renderPassInfo{};
+	renderPassInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassInfo.renderPass        = render_pass_;
+	renderPassInfo.framebuffer       = framebuffer(frame.imageIndex);
+	renderPassInfo.renderArea.offset = { 0, 0 };
+	renderPassInfo.renderArea.extent = swapchain_extent_;
+	renderPassInfo.clearValueCount   = 1;
+	renderPassInfo.pClearValues      = &clearValue;
+	vkCmdBeginRenderPass(frame.commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
+
+void VulkanContext::endRenderPass(const Frame &frame) {
+	if (frame.commandBuffer != VK_NULL_HANDLE) {
+		vkCmdEndRenderPass(frame.commandBuffer);
+	}
+}
+
+void VulkanContext::setViewportAndScissor(VkCommandBuffer commandBuffer) const {
+	if (commandBuffer == VK_NULL_HANDLE) {
+		return;
+	}
+
+	VkViewport viewport{};
+	viewport.width    = static_cast<float>(swapchain_extent_.width);
+	viewport.height   = static_cast<float>(swapchain_extent_.height);
+	viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.extent = swapchain_extent_;
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+}
+
 void VulkanContext::destroySwapchain(bool destroy_render_pass) {
-	/*
-	 * Destroy dependent resources before the swapchain itself. The render pass
-	 * can survive an extent-only resize and is removed only when requested.
-	 */
+	// -------------------------------------------------------------------------
+	// Destroy dependent resources before the swapchain itself. The render pass
+	// can survive an extent-only resize and is removed only when requested.
+	// -------------------------------------------------------------------------
 	for (VkFramebuffer framebuffer : swapchain_framebuffers_) {
 		vkDestroyFramebuffer(device_.device(), framebuffer, nullptr);
 	}
@@ -330,7 +370,7 @@ void VulkanContext::destroySwapchain(bool destroy_render_pass) {
 }
 
 void VulkanContext::destroyWindowResources() {
-	/* Release all device resources owned by this context after the device is idle. */
+	// Release all device resources owned by this context after the device is idle.
 	if (device_.device() == VK_NULL_HANDLE) {
 		return;
 	}
@@ -352,7 +392,7 @@ void VulkanContext::destroyWindowResources() {
 }
 
 void VulkanContext::waitForValidFramebufferSize() const {
-	/* Minimized windows report zero size and cannot create a usable swapchain. */
+	// Minimized windows report zero size and cannot create a usable swapchain.
 	int width  = 0;
 	int height = 0;
 	glfwGetFramebufferSize(window_->handle(), &width, &height);
@@ -363,10 +403,10 @@ void VulkanContext::waitForValidFramebufferSize() const {
 }
 
 void VulkanContext::recreateSwapchain() {
-	/*
-	 * Rebuild resources affected by a resize. The render pass is retained when
-	 * the format is unchanged, which keeps existing pipelines compatible.
-	 */
+	// -------------------------------------------------------------------------
+	// Rebuild resources affected by a resize. The render pass is retained when
+	// the format is unchanged, which keeps existing pipelines compatible.
+	// -------------------------------------------------------------------------
 	if (device_.device() == VK_NULL_HANDLE) {
 		return;
 	}
@@ -399,7 +439,7 @@ void VulkanContext::recreateSwapchain() {
 }
 
 VkFramebuffer VulkanContext::framebuffer(std::uint32_t index) const {
-	/* Keep invalid image indices visible instead of returning an invalid handle. */
+	// Keep invalid image indices visible instead of returning an invalid handle.
 	if (index >= swapchain_framebuffers_.size()) {
 		throw std::out_of_range("swapchain framebuffer index out of range");
 	}
@@ -407,10 +447,10 @@ VkFramebuffer VulkanContext::framebuffer(std::uint32_t index) const {
 }
 
 void VulkanContext::createRenderPass() {
-	/*
-	 * Step 3: describe the color attachment and the subpass that writes to it.
-	 * The final layout allows the presentation queue to display the image.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 3: describe the color attachment and the subpass that writes to it.
+	// The final layout allows the presentation queue to display the image.
+	// -------------------------------------------------------------------------
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format         = swapchain_format_;
 	colorAttachment.samples        = VK_SAMPLE_COUNT_1_BIT;
@@ -453,10 +493,10 @@ void VulkanContext::createRenderPass() {
 }
 
 void VulkanContext::createFramebuffers() {
-	/*
-	 * Step 4: create one framebuffer per swapchain image view. Framebuffers are
-	 * the render-pass-compatible targets used during command recording.
-	 */
+	// -------------------------------------------------------------------------
+	// Step 4: create one framebuffer per swapchain image view. Framebuffers are
+	// the render-pass-compatible targets used during command recording.
+	// -------------------------------------------------------------------------
 	swapchain_framebuffers_.resize(swapchain_image_views_.size());
 	for (size_t i = 0; i < swapchain_image_views_.size(); i++) {
 		VkImageView attachments[] = { swapchain_image_views_[i] };

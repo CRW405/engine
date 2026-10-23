@@ -10,11 +10,31 @@
 
 namespace engine {
 
-/*
- * Describes the fixed-function state used to create a graphics pipeline.
- * Vulkan stores pointers in several create-info structs, so this type repairs
- * its internal pointers whenever it is copied or moved.
- */
+// ============================================================================
+// Vertex input descriptions
+// ============================================================================
+struct VertexInputDescription {
+	std::vector<VkVertexInputBindingDescription>   bindings;
+	std::vector<VkVertexInputAttributeDescription> attributes;
+
+	VertexInputDescription &addBinding(
+	    uint32_t binding,
+	    uint32_t stride,
+	    VkVertexInputRate inputRate = VK_VERTEX_INPUT_RATE_VERTEX);
+	VertexInputDescription &addAttribute(
+	    uint32_t location,
+	    uint32_t binding,
+	    VkFormat format,
+	    uint32_t offset);
+};
+
+// ============================================================================
+// Pipeline configuration
+//
+// Describes the fixed-function state used to create a graphics pipeline.
+// Vulkan stores pointers in several create-info structs, so this type repairs
+// its internal pointers whenever it is copied or moved.
+// ============================================================================
 struct PipelineConfigInfo {
 	PipelineConfigInfo() = default;
 	PipelineConfigInfo(const PipelineConfigInfo &other);
@@ -36,8 +56,13 @@ struct PipelineConfigInfo {
 	VkRenderPass                           renderPass     = VK_NULL_HANDLE;
 	uint32_t                               subpass        = 0;
 
+	void setVertexInput(const VertexInputDescription &description);
+
   private:
 	void refreshInternalPointers() noexcept;
+
+	std::vector<VkVertexInputBindingDescription>   vertexBindings_;
+	std::vector<VkVertexInputAttributeDescription> vertexAttributes_;
 };
 
 class Pipeline {

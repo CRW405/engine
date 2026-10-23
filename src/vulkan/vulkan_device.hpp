@@ -19,11 +19,13 @@ struct QueueFamilies {
 	bool          hasPresent  = false;
 };
 
-/*
- * Owns the Vulkan instance and logical device shared by renderer resources.
- * Device selection uses the window surface because presentation support belongs
- * to a queue family and surface pair.
- */
+// ============================================================================
+// Shared Vulkan device
+//
+// Owns the Vulkan instance and logical device shared by renderer resources.
+// Device selection uses the window surface because presentation support belongs
+// to a queue family and surface pair.
+// ============================================================================
 class VulkanDevice {
   public:
 	explicit VulkanDevice(GLFWwindow *main_window, std::string app_name = "Engine");
@@ -40,6 +42,7 @@ class VulkanDevice {
 	[[nodiscard]] VkQueue          graphicsQueue() const noexcept { return graphics_queue_; }
 	[[nodiscard]] VkQueue          presentQueue() const noexcept { return present_queue_; }
 	[[nodiscard]] QueueFamilies    findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) const;
+	void                           waitIdle() const;
 
   private:
 	void createInstance(const std::string app_name);
