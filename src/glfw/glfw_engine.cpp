@@ -2,8 +2,11 @@
 
 #include <cstdio>
 #include <stdexcept>
+#include <utility>
 
 namespace engine {
+
+std::unordered_map<GLFWwindow *, Window *> Window::instances_;
 
 // -----------------------------------------------------------------------------
 // GLFW lifetime and window management
@@ -36,16 +39,26 @@ Window::Window(const WindowConfig &config) {
 	if (window_ == nullptr) {
 		throw std::runtime_error("failed to create GLFW window");
 	}
+	instances_[window_] = this;
+	glfwSetKeyCallback(window_, keyCallback);
+	glfwSetScrollCallback(window_, scrollCallback);
 }
 
 Window::~Window() {
 	// Destroying the window releases the native handle owned by this wrapper.
 	if (window_ != nullptr) {
+		instances_.erase(window_);
+		glfwSetKeyCallback(window_, nullptr);
+		glfwSetScrollCallback(window_, nullptr);
 		glfwDestroyWindow(window_);
 	}
 }
 
-Window::Window(Window &&other) noexcept : window_(other.window_) {
+Window::Window(Window &&other) noexcept
+    : window_(other.window_), pressed_keys_(std::move(other.pressed_keys_)) {
+	if (window_ != nullptr) {
+		instances_[window_] = this;
+	}
 	other.window_ = nullptr;
 }
 
@@ -56,6 +69,10 @@ Window &Window::operator=(Window &&other) noexcept {
 			glfwDestroyWindow(window_);
 		}
 		window_       = other.window_;
+		pressed_keys_ = std::move(other.pressed_keys_);
+		if (window_ != nullptr) {
+			instances_[window_] = this;
+		}
 		other.window_ = nullptr;
 	}
 	return *this;
@@ -91,8 +108,64 @@ double Window::time() const noexcept {
 	return glfwGetTime();
 }
 
-bool Window::keyPressed(int key) const noexcept {
-	return window_ != nullptr && glfwGetKey(window_, key) == GLFW_PRESS;
+bool Window::mouseButtonDown(int button) const noexcept {
+	return window_ != nullptr && glfwGetMouseButton(window_, button) == GLFW_PRESS;
 }
 
+MousePosition Window::cursorPosition() const noexcept {
+	MousePosition position;
+	if (window_ != nullptr) {
+		glfwGetCursorPos(window_, &position.x, &position.y);
+	}
+	return position;
 }
+
+MousePosition Window::consumeScrollDelta() noexcept {
+	const MousePosition delta = scroll_delta_;
+	scroll_delta_             = {};
+	return delta;
+}
+
+bool Window::keyPressed(int key) noexcept {
+	if (window_ == nullptr) {
+		return false;
+	}
+
+	const auto pressed = pressed_keys_.find(key);
+	if (pressed == pressed_keys_.end()) {
+		return false;
+	}
+	pressed_keys_.erase(pressed);
+	return true;
+}
+
+bool Window::keyReleased(int key) const noexcept {
+	return window_ != nullptr && glfwGetKey(window_, key) == GLFW_RELEASE;
+}
+
+void Window::keyCallback(GLFWwindow *window, int key, int, int action, int) {
+	const auto instance = instances_.find(window);
+	if (instance != instances_.end()) {
+		instance->second->handleKeyEvent(key, action);
+	}
+}
+
+void Window::scrollCallback(GLFWwindow *window, double x_offset, double y_offset) {
+	const auto instance = instances_.find(window);
+	if (instance != instances_.end()) {
+		instance->second->handleScrollEvent(x_offset, y_offset);
+	}
+}
+
+void Window::handleKeyEvent(int key, int action) noexcept {
+	if (action == GLFW_PRESS) {
+		pressed_keys_.insert(key);
+	}
+}
+
+void Window::handleScrollEvent(double x_offset, double y_offset) noexcept {
+	scroll_delta_.x += x_offset;
+	scroll_delta_.y += y_offset;
+}
+
+} // namespace engine

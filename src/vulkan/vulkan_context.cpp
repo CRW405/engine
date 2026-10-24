@@ -305,10 +305,13 @@ void VulkanContext::endFrame(const Frame &frame) {
 	current_frame_ = (current_frame_ + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void VulkanContext::beginRenderPass(const Frame &frame, VkClearValue clearValue) {
+void VulkanContext::beginRenderPass(const Frame &frame, std::array<float, 4> clearColor) {
 	if (frame.commandBuffer == VK_NULL_HANDLE) {
 		return;
 	}
+
+	VkClearValue clearValue{};
+	std::copy(clearColor.begin(), clearColor.end(), clearValue.color.float32);
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;

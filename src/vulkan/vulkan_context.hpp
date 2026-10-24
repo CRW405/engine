@@ -48,7 +48,7 @@ class VulkanContext {
 
 	[[nodiscard]] Frame beginFrame();
 	void                endFrame(const Frame &frame);
-	void                beginRenderPass(const Frame &frame, VkClearValue clearValue);
+	void                beginRenderPass(const Frame &frame, std::array<float, 4> clearColor);
 	void                endRenderPass(const Frame &frame);
 	void                setViewportAndScissor(VkCommandBuffer commandBuffer) const;
 	void                recreateSwapchain();

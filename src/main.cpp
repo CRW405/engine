@@ -1,4 +1,5 @@
 #include "glfw/glfw_engine.hpp"
+#include "tools/fps.hpp"
 #include "vulkan/buffer.hpp"
 #include "vulkan/pipeline_layout.hpp"
 #include "vulkan/render_pipeline.hpp"
@@ -7,6 +8,7 @@
 
 #include <cglm/cglm.h>
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
@@ -14,10 +16,12 @@
 #include <vector>
 
 int vulkan_triangle();
+int sierpinski_triangle();
 
 int main() {
 	try {
-		return vulkan_triangle();
+		// return vulkan_triangle();
+		return sierpinski_triangle();
 	} catch (const std::exception &e) {
 		std::fprintf(stderr, "Error: %s\n", e.what());
 		return EXIT_FAILURE;
@@ -90,8 +94,7 @@ int vulkan_triangle() {
 		// Step 4: acquire, record, submit, and present one frame at a time.
 		// beginFrame returns an empty frame when the swapchain was recreated.
 		// -------------------------------------------------------------------------
-		std::uint64_t framesSinceReport = 0;
-		double        fpsReportTime     = window.time();
+		tools::FPSCounter fps(window.time());
 
 		while (!window.shouldClose()) {
 			window.pollEvents();
@@ -108,7 +111,7 @@ int vulkan_triangle() {
 			// Begin the render pass against the image acquired for this frame.
 			// The swapchain extent is the framebuffer size Vulkan is actually using.
 			// -------------------------------------------------------------------------
-			vulkan.beginRenderPass(frame, { { { 1.0f, 1.0f, 1.0f, 1.0f } } });
+			vulkan.beginRenderPass(frame, { 1.0f, 1.0f, 1.0f, 1.0f });
 
 			// Bind state first, then issue the draw commands that use it.
 			pipeline.bind(frame.commandBuffer);
@@ -142,26 +145,102 @@ int vulkan_triangle() {
 
 			vulkan.endFrame(frame);
 
-			// Report the number of frames presented over the last second.
-			++framesSinceReport;
-			const double now     = window.time();
-			const double elapsed = now - fpsReportTime;
-			if (elapsed >= 1.0) {
-				const double fps = static_cast<double>(framesSinceReport) / elapsed;
-				std::printf("\r\033[KFPS: %.1f", fps);
-				std::fflush(stdout);
-
-				framesSinceReport = 0;
-				fpsReportTime     = now;
-			}
+			fps.update(window.time());
 		}
 
 		// Leave the cursor on a fresh line once the loop exits.
-		std::printf("\n");
+		fps.finish();
 		device.waitIdle(); // Wait for the device to finish before tearing down the context and window
 	} catch (const std::exception &error) {
 		std::fprintf(stderr, "Fatal error: %s\n", error.what());
 		return 1;
 	}
+	return 0;
+}
+
+struct Camera {
+	int   recursion_depth;
+	float zoom;
+	float aspect_ratio;
+};
+int sierpinski_triangle() {
+	// setup
+	engine::GLFWContext   glfw;
+	engine::Window        window({ 500, 500, "Sierpinski Triangle", true });
+	engine::VulkanDevice  device(window.handle(), "Engine");
+	engine::VulkanContext vulkan(device, &window);
+
+	// create pipeline
+	engine::PipelineConfigInfo pipelineConfig = engine::Pipeline::defaultPipelineConfigInfo();
+
+	VkPushConstantRange    pushConstantRange{ VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(Camera) };
+	engine::PipelineLayout pipelineLayout(device, { pushConstantRange });
+	pipelineConfig.pipelineLayout = pipelineLayout.handle();
+	pipelineConfig.renderPass     = vulkan.renderPass();
+	engine::Pipeline pipeline(device,
+	                          "shaders/sierpinski_triangle.vert.spv",
+	                          "shaders/sierpinski_triangle.frag.spv",
+	                          pipelineConfig);
+
+	// "globals"
+	Camera camera{ 0, 1.0f, 1.0f };
+
+	// debug tools
+	tools::FPSCounter fps(window.time());
+
+	// main loop
+	while (!window.shouldClose()) {
+		window.pollEvents();
+
+		// input
+		if (window.keyPressed(GLFW_KEY_ESCAPE) || window.keyPressed(GLFW_KEY_Q)) {
+			glfwSetWindowShouldClose(window.handle(), GLFW_TRUE);
+		}
+		if (window.keyPressed(GLFW_KEY_RIGHT)) {
+			camera.recursion_depth++;
+			std::printf("Recursion depth: %d\n", camera.recursion_depth);
+			std::printf("Number of triangles: %lld\n", (long long)pow(3, camera.recursion_depth));
+		}
+		if (window.keyPressed(GLFW_KEY_LEFT) && camera.recursion_depth > 0) {
+			camera.recursion_depth--;
+			std::printf("Recursion depth: %d\n", camera.recursion_depth);
+			std::printf("Number of triangles: %lld\n", (long long)pow(3, camera.recursion_depth));
+		}
+
+		const engine::MousePosition scroll = window.consumeScrollDelta();
+		camera.zoom                        = camera.zoom * std::exp(static_cast<float>(scroll.y) * 0.1f);
+
+		// create frame
+		const engine::Frame frame = vulkan.beginFrame();
+		if (frame.commandBuffer == VK_NULL_HANDLE) {
+			continue;
+		}
+		camera.aspect_ratio = static_cast<float>(vulkan.extent().width) /
+		                      static_cast<float>(vulkan.extent().height);
+		vulkan.beginRenderPass(frame, { 1.0f, 1.0f, 1.0f, 1.0f });
+
+		// setup draw
+		pipeline.bind(frame.commandBuffer);
+		vulkan.setViewportAndScissor(frame.commandBuffer);
+
+		// push constant data
+		vkCmdPushConstants(
+		    frame.commandBuffer,
+		    pipelineLayout.handle(),
+		    VK_SHADER_STAGE_FRAGMENT_BIT,
+		    0,
+		    sizeof(camera),
+		    &camera);
+
+		// draw
+		vkCmdDraw(frame.commandBuffer, 3, 1, 0, 0);
+
+		// end frame
+		vulkan.endRenderPass(frame);
+		vulkan.endFrame(frame);
+		fps.update(window.time());
+	}
+	fps.finish();
+	device.waitIdle();
 	return 0;
 }
