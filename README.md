@@ -1,177 +1,150 @@
 
-# Vulkan boilerplate engine
+# Vulkan Boilerplate Engine
 
-Meant to be a project to learn Vulkan but also set myself up for more complex projects where I dont have to worry about boilerplate as much.
+## Description
+
+This project is a small C++ engine layer for Vulkan.
+
+It handles the setup that most Vulkan programs need:
+
+- GLFW initialization and window creation
+- Vulkan instance and validation layers
+- Physical and logical device selection
+- Graphics and presentation queues
+- Swapchain creation and recreation
+- Render passes and framebuffers
+- Command buffers and frame synchronization
+- Vertex and index buffers
+- Pipeline layouts and graphics pipelines
+
+The code keeps Vulkan objects visible and explicit. It reduces repeated setup
+without hiding how Vulkan works.
+
+`src/main.cpp` contains examples of how to use the engine. The engine code is
+in `src/glfw`, `src/tools`, and `src/vulkan`.
+
+## Use Case
+
+This project is useful for learning Vulkan and for starting small rendering
+experiments without rewriting the same initialization code each time.
+
+It is aimed at programs that need direct control over:
+
+- GPU resources
+- Command recording
+- Shader interfaces
+- Synchronization
+- Swapchain behavior
+
+It is not a complete game engine. It does not provide scenes, materials,
+asset loading, cameras, or an entity system.
 
 ## TODO
 
-- Sierpinski triangle shader
-- Renderer encapsulation // kinda, still want to keep things lowish level and explicit
-- Scene abstraction // may save this for a seperate project
+- OBJ reader
+- Camera Abstraction
+- DOD Refactor
+- Fill this out more
 
-## Notes
+## Technical overview
 
-### Vulkan mental model
+The code uses RAII to manage Vulkan and GLFW objects. Objects are created in
+dependency order and destroyed in reverse order.
 
-Vulkan is an explicit API. It does not try to infer what the application
-intends to do, and it does not automatically protect the application from
-using resources at the wrong time. The application is responsible for
-describing resources, recording work, synchronizing access, and releasing
-objects in a valid order.
+`VulkanDevice` owns the Vulkan instance, selected physical device, logical
+device, and shared queues. `VulkanContext` owns resources connected to one
+window, including its surface, swapchain, render pass, framebuffers, command
+pool, and synchronization objects.
 
-A useful high-level flow is:
+`Buffer` provides the common buffer and memory code. `VertexBuffer` and
+`IndexBuffer` add the binding operations needed for drawing.
 
-1. Create an instance to connect the application to the Vulkan loader and
-   available implementation.
-2. Create a surface that connects Vulkan to the window system.
-3. Select a physical device whose queues and features support the application.
-4. Create a logical device and retrieve the queues used to submit work.
-5. Create a swapchain containing images that can be presented to the window.
-6. Create image views, render passes, framebuffers, pipelines, and buffers.
-7. Record command buffers and submit them to GPU queues.
-8. Present completed swapchain images.
+`PipelineLayout` describes push constants and descriptor set layouts.
+`Pipeline` loads SPIR-V shader files and creates a graphics pipeline from
+configurable fixed-function state.
 
-The bootstrap separates these responsibilities into two broad ownership
-groups. `VulkanDevice` owns the instance, selected physical device, logical
-device, and shared queues. `VulkanContext` owns resources tied to one window:
-the surface, swapchain, render pass, framebuffers, command pool, and frame
-synchronization objects.
+The current buffer implementation uses host-visible, host-coherent memory.
+That keeps data upload simple. A larger renderer would usually upload through
+a staging buffer into device-local memory.
 
-### CPU and GPU execution
+Shaders are compiled from `src/shaders` into SPIR-V files by CMake. The
+project uses C++20, GLFW, Vulkan, and `glslc` or `glslangValidator`.
 
-The CPU and GPU are separate execution systems. The CPU prepares data and
-records commands, while the GPU consumes those commands asynchronously. A
-function returning after `vkQueueSubmit` does not mean that the GPU has
-finished the work. It means the work has been placed into a queue.
+## Workflow
 
-This distinction explains several common Vulkan rules:
+A program using the engine normally follows this order:
 
-- A resource must remain alive until the GPU is finished using it.
-- Command buffers describe future work; recording a command does not execute it.
-- Queue submission and presentation require explicit synchronization.
-- The CPU may need to wait for a fence before reusing a command buffer or
-  per-frame resource.
+1. Create a `GLFWContext`.
+2. Create a `Window`.
+3. Create a `VulkanDevice` using the window.
+4. Create a `VulkanContext`.
+5. Create pipeline layouts, pipelines, and buffers.
+6. Start the render loop.
+7. Poll window events and read input.
+8. Call `beginFrame()`.
+9. Begin a render pass and set the viewport and scissor.
+10. Bind pipelines and buffers, then issue draw commands.
+11. End the render pass and call `endFrame()`.
+12. Wait for the device to become idle before resources are destroyed.
 
-The main loop uses two frames in flight. Each frame slot has a command buffer,
-an image-available semaphore, and a fence. The swapchain images also track
-which fence currently represents work using each image. This separates CPU
-progress from the number of images owned by the presentation system.
+If the window changes size, the context recreates the swapchain and the
+resources that depend on it. `beginFrame()` returns an empty frame while that
+work is being done, so the application can skip that iteration.
 
-### Queues and command buffers
+## Theory
 
-A queue is a submission endpoint owned by the logical device. Queue families
-advertise capabilities such as graphics, compute, transfer, and presentation.
-A graphics queue can execute draw commands, but presentation support must be
-checked separately because it depends on the selected surface.
+### General graphics programming
 
-Command buffers are recorded descriptions of GPU work. Recording is organized
-around the state needed by later commands: bind a pipeline, bind buffers,
-begin a render pass, set dynamic state, and issue a draw. The order matters
-because many commands modify state that subsequent commands consume.
+The CPU prepares data and commands. The GPU processes those commands later.
+Creating or recording a command does not mean that the GPU has finished it.
 
-The current triangle follows this conceptual sequence:
+A basic draw needs:
 
-1. Acquire a swapchain image.
-2. Begin recording the frame command buffer.
-3. Begin a render pass targeting that image's framebuffer.
-4. Bind the graphics pipeline.
-5. Set the viewport and scissor.
-6. Bind the vertex buffer.
-7. Issue the draw command.
-8. End the render pass and command buffer.
-9. Submit the command buffer and present the image.
+1. Vertex data
+2. A description of the vertex data layout
+3. A graphics pipeline
+4. A render target
+5. Recorded draw commands
+6. Synchronization between the CPU, GPU, and display system
 
-### Resources and memory
+A graphics pipeline turns vertex data into pixels. The vertex shader processes
+vertices and produces positions. Rasterization turns primitives into fragments.
+The fragment shader determines the color of each fragment. The resulting
+pixels are written to a framebuffer.
 
-Vulkan separates a resource from the memory backing that resource. A
-`VkBuffer` describes how data will be used, while `VkDeviceMemory` provides
-storage. The application must select a memory type whose allowed bit and
-properties match the intended access pattern.
+Shader inputs and CPU data must agree. In the triangle example, vertex
+location `0` is a two-component position and location `1` is a three-component
+color. The C++ structure, Vulkan vertex descriptions, and shader declarations
+all describe the same data.
 
-The current vertex buffer uses host-visible, host-coherent memory because it is
-easy to understand and useful for an initial learning implementation. A more
-performance-oriented renderer usually stages data through a CPU-visible buffer
-and copies it into device-local memory using a transfer command. Device-local
-memory is generally faster for the GPU, while host-visible memory is easier for
-the CPU to update.
+### Vulkan
 
-For every resource, ask:
+Vulkan is an explicit API. The application must state which resources it
+uses, how they are connected, when work is submitted, and when resources can
+be reused or destroyed.
 
-- Who creates it?
-- Who owns it?
-- Which queue uses it?
-- How long must it stay alive?
-- Which synchronization guarantees safe reuse or destruction?
+The main Vulkan objects used here follow this order:
 
-These questions are more important than the Vulkan handle itself. A handle is
-only a reference to an implementation-owned object; it does not communicate
-ownership or lifetime by itself.
+1. An instance connects the application to the Vulkan implementation.
+2. A surface connects Vulkan to the window system.
+3. A physical device is selected based on queue and swapchain support.
+4. A logical device provides the queues used by the application.
+5. A swapchain provides images that can be presented to the window.
+6. Image views, a render pass, and framebuffers describe the render targets.
+7. Command buffers record GPU work.
+8. Semaphores and fences coordinate work.
+9. The presentation queue displays completed swapchain images.
 
-### Pipelines and shaders
+Semaphores coordinate operations submitted to queues. Fences let the CPU
+check whether submitted work has completed. The context uses two frames in
+flight so the CPU can prepare another frame while the GPU works on the
+previous one.
 
-A graphics pipeline combines shader stages with fixed-function state. The
-vertex shader transforms input positions and passes values forward. The
-fragment shader determines the color written to the framebuffer. Between them,
-the pipeline describes how vertex data is interpreted, assembled, rasterized,
-and blended.
+Swapchain images change layout as they move through the frame. They are
+acquired for rendering, used as color attachments, and then transitioned for
+presentation. Render pass dependencies and submission synchronization describe
+these transitions to Vulkan.
 
-Pipeline creation is relatively expensive compared with binding an existing
-pipeline. Vulkan therefore encourages creating pipelines ahead of rendering
-and reusing them during command recording. The pipeline layout defines the
-interface between shaders and application-provided resources such as descriptor
-sets and push constants.
-
-Shader interface locations must agree with the vertex input descriptions. In
-this project, vertex location `0` contains the position and location `1`
-contains the color. The CPU-side structure, vertex attribute descriptions, and
-shader declarations are three views of the same data contract.
-
-### Synchronization and image layout
-
-Synchronization answers two questions:
-
-1. Has an earlier operation completed?
-2. Is the resource in a state and layout suitable for the next operation?
-
-Semaphores coordinate work between queue operations and presentation. Fences
-let the CPU observe completion of submitted work. Pipeline barriers and render
-pass dependencies describe ordering and access relationships inside GPU work.
-
-Image layouts are part of this contract. A swapchain image is acquired for
-rendering, used as a color attachment, and transitioned into a presentation
-layout. Vulkan requires the application to make these transitions explicit
-enough that the implementation can schedule access safely.
-
-Synchronization should be precise rather than global. Waiting for the whole
-device to become idle is useful during shutdown and swapchain recreation, but
-using it for every frame would prevent useful CPU/GPU overlap.
-
-### Swapchain recreation
-
-The swapchain belongs to the window system and can become invalid when a
-window is resized, minimized, or otherwise changes presentation conditions.
-Recreation waits for a valid framebuffer size, waits for device work to finish,
-destroys dependent resources, and creates them again with the new extent.
-
-Resources that depend on the swapchain include image views, framebuffers, and
-often render-pass-compatible pipelines. A resize that changes only the extent
-can preserve compatible pipeline state, while a format change may require
-recreating the render pass and graphics pipelines.
-
-### Learning direction
-
-The bootstrap intentionally keeps the application loop visible. Future
-experiments can build on this foundation by adding:
-
-- descriptor sets and uniform buffers;
-- staging buffers and device-local resources;
-- depth testing and depth images;
-- texture uploads and samplers;
-- multiple render passes or dynamic rendering;
-- compute pipelines and storage buffers;
-- explicit barriers and more specialized queue usage.
-
-When adding a feature, first identify its data flow and lifetime. Then decide
-which object should own it, which queue will use it, and what synchronization
-is required. This keeps the abstraction useful without turning Vulkan's
-important concepts into invisible magic.
+Window resizing can invalidate the swapchain. The context waits for the
+device, rebuilds the swapchain-dependent resources, and continues rendering
+with the new extent.
