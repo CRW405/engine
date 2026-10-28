@@ -21,16 +21,23 @@ int vulkan_triangle();
 int sierpinski_triangle();
 int image_texture_example();
 
-int main() {
-	try {
-		vulkan_triangle();
-		sierpinski_triangle();
-		image_texture_example();
-	} catch (const std::exception &e) {
-		std::fprintf(stderr, "Error: %s\n", e.what());
-		return EXIT_FAILURE;
+int main(int argc, char *argv[]) {
+	int example = 0;
+	if (argc > 1) {
+		example = std::atoi(argv[1]);
 	}
-	return EXIT_SUCCESS;
+
+	switch (example) {
+	case 0:
+		return vulkan_triangle();
+	case 1:
+		return sierpinski_triangle();
+	case 2:
+		return image_texture_example();
+	default:
+		std::fprintf(stderr, "Unknown program %d\n", example);
+		return 1;
+	}
 }
 
 // -----------------------------------------------------------------------------
