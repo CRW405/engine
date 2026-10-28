@@ -16,13 +16,20 @@ It handles the setup that most Vulkan programs need:
 - Command buffers and frame synchronization
 - Vertex and index buffers
 - Texture loading and sampled image descriptor sets
+- Uniform buffers and uniform buffer descriptor sets
 - Pipeline layouts and graphics pipelines
 
 The code keeps Vulkan objects visible and explicit. It reduces repeated setup
 without hiding how Vulkan works.
 
+While the engine does a lot of the heavy lifting and provides some useful defaults,
+manual control is still recommended. The engine is just intended to accelerate setup
+and allow for more rapid experimentation and prototyping.
+
 `src/main.cpp` contains examples of how to use the engine. The engine code is
-in `src/glfw`, `src/tools`, and `src/vulkan`.
+in `src/glfw`, `src/tools`, and `src/vulkan`. Run `engine 4` for the full
+showcase, which combines window input, buffers, textures, descriptor sets,
+uniforms, push constants, pipelines, swapchain frames, and FPS reporting.
 
 ## Use Case
 
@@ -38,7 +45,7 @@ It is aimed at programs that need direct control over:
 - Swapchain behavior
 
 It is not a complete game engine. It does not provide scenes, materials,
-asset loading, cameras, or an entity system.
+asset loading, cameras, or an entity system. (yet (maybe))
 
 ## TODO
 
@@ -58,16 +65,31 @@ window, including its surface, swapchain, render pass, framebuffers, command
 pool, and synchronization objects.
 
 `Buffer` provides the common buffer and memory code. `VertexBuffer` and
-`IndexBuffer` add the binding operations needed for drawing.
+`IndexBuffer` add the binding operations needed for drawing. `UniformBuffer`
+wraps a typed value with the uniform-buffer usage flag. `Mesh` pairs a vertex and
+index buffer and records the common indexed draw with `bind()` and `draw()`.
+
+`DescriptorSetLayout`, `DescriptorPool`, and `DescriptorSet` provide the shared
+descriptor plumbing. `combinedImageSampler()` and `uniformBuffer()` are the
+default bindings for the two common single-resource cases; build a
+`DescriptorSetLayout` from explicit `DescriptorBinding` values for more complex
+interfaces.
 
 `ImageTexture` loads an image and owns its image view and sampler.
-`TextureDescriptorSet` owns the descriptor set layout, pool, and set needed to
-sample that texture. Its defaults describe one combined image sampler at binding
-`0` in the fragment stage. Pass a different binding or stage to the constructor
-when a shader needs another interface; create the descriptor objects directly
-with Vulkan for more complex layouts.
+`TextureDescriptorSet` uses the shared descriptor wrappers to own the layout,
+pool, and set needed to sample that texture. Its defaults describe one combined
+image sampler at binding `0` in the fragment stage. Pass a different binding or
+stage to the constructor when a shader needs another interface. `bind()` records
+the set through a pipeline layout.
+
+`UBODescriptorSet` follows the same pattern for uniform buffers. Its defaults
+describe one uniform buffer at binding `0` in the vertex stage, which is enough
+for model, view, and projection matrices. Update the backing buffer when the
+data changes; the descriptor already points at its full range.
 
 `PipelineLayout` describes push constants and descriptor set layouts.
+`pushConstant<T>()` creates a `PushConstant` that carries its range, stage flags,
+and typed `push()` call so the layout and recorded data stay in sync.
 `Pipeline` loads SPIR-V shader files and creates a graphics pipeline from
 configurable fixed-function state. `defaultPipelineConfigInfo()` provides a
 sensible starting point, while the pipeline config fields stay public and can be
@@ -88,7 +110,7 @@ A program using the engine normally follows this order:
 2. Create a `Window`.
 3. Create a `VulkanDevice` using the window.
 4. Create a `VulkanContext`.
-5. Create textures, descriptor sets, pipeline layouts, pipelines, and buffers.
+5. Create meshes, textures, uniform buffers, descriptor sets, pipeline layouts, and pipelines.
 6. Start the render loop.
 7. Poll window events and read input.
 8. Call `beginFrame()`.
@@ -96,9 +118,6 @@ A program using the engine normally follows this order:
 10. Bind pipelines and buffers, then issue draw commands.
 11. End the render pass and call `endFrame()`.
 12. Wait for the device to become idle before resources are destroyed.
-
-Draw commands such as `vkCmdDrawIndexed` stay explicit. The helpers cover
-resource setup and binding without forcing a command-recording policy.
 
 If the window changes size, the context recreates the swapchain and the
 resources that depend on it. `beginFrame()` returns an empty frame while that

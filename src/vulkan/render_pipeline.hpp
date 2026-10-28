@@ -3,6 +3,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -86,6 +87,22 @@ class Pipeline {
 	Pipeline &operator=(Pipeline &&) = delete;
 
 	void bind(VkCommandBuffer commandBuffer);
+
+	// Draw helpers assume this pipeline is already bound. Their default
+	// arguments cover the common single-instance, start-of-buffer case.
+	void draw(
+	    VkCommandBuffer commandBuffer,
+	    std::uint32_t   vertexCount,
+	    std::uint32_t   instanceCount = 1,
+	    std::uint32_t   firstVertex   = 0,
+	    std::uint32_t   firstInstance = 0) const noexcept;
+	void drawIndexed(
+	    VkCommandBuffer commandBuffer,
+	    std::uint32_t   indexCount,
+	    std::uint32_t   instanceCount = 1,
+	    std::uint32_t   firstIndex    = 0,
+	    std::int32_t    vertexOffset  = 0,
+	    std::uint32_t   firstInstance = 0) const noexcept;
 
 	[[nodiscard]] VkPipeline       pipeline() const noexcept { return pipeline_; }
 	[[nodiscard]] VkPipelineLayout layout() const noexcept { return layout_; }

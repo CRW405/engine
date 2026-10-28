@@ -79,11 +79,36 @@ void Buffer::bind(VkCommandBuffer commandBuffer, std::uint32_t binding) const {
 	vkCmdBindVertexBuffers(commandBuffer, binding, 1, &buffer_, &offset);
 }
 
+void Buffer::update(const void *data, VkDeviceSize size, VkDeviceSize offset) {
+	if (data == nullptr || size == 0 || offset + size > size_) {
+		throw std::invalid_argument("buffer update out of bounds");
+	}
+
+	void *mappedData = nullptr;
+	if (vkMapMemory(device_.device(), memory_, offset, size, 0, &mappedData) != VK_SUCCESS) {
+		throw std::runtime_error("failed to map buffer memory for update");
+	}
+	std::memcpy(mappedData, data, static_cast<std::size_t>(size));
+	vkUnmapMemory(device_.device(), memory_);
+}
+
 // -----------------------------------------------------------------------------
 // Index buffer binding
 // -----------------------------------------------------------------------------
 void IndexBuffer::bind(VkCommandBuffer commandBuffer) const {
 	vkCmdBindIndexBuffer(commandBuffer, buffer_, 0, index_type_);
+}
+
+// -----------------------------------------------------------------------------
+// Mesh binding and drawing
+// -----------------------------------------------------------------------------
+void Mesh::bind(VkCommandBuffer commandBuffer) const {
+	vertex_buffer_.bind(commandBuffer);
+	index_buffer_.bind(commandBuffer);
+}
+
+void Mesh::draw(VkCommandBuffer commandBuffer) const {
+	vkCmdDrawIndexed(commandBuffer, index_count_, 1, 0, 0, 0);
 }
 
 } // namespace engine

@@ -271,6 +271,30 @@ void Pipeline::bind(VkCommandBuffer commandBuffer) {
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
 }
 
+void Pipeline::draw(
+    VkCommandBuffer commandBuffer,
+    std::uint32_t   vertexCount,
+    std::uint32_t   instanceCount,
+    std::uint32_t   firstVertex,
+    std::uint32_t   firstInstance) const noexcept {
+	vkCmdDraw(commandBuffer, vertexCount, instanceCount, firstVertex, firstInstance);
+}
+
+void Pipeline::drawIndexed(
+    VkCommandBuffer commandBuffer,
+    std::uint32_t   indexCount,
+    std::uint32_t   instanceCount,
+    std::uint32_t   firstIndex,
+    std::int32_t    vertexOffset,
+    std::uint32_t   firstInstance) const noexcept {
+	vkCmdDrawIndexed(commandBuffer,
+	                 indexCount,
+	                 instanceCount,
+	                 firstIndex,
+	                 vertexOffset,
+	                 firstInstance);
+}
+
 std::vector<char> Pipeline::readFile(const std::string &filepath) {
 	// Shader binaries are read as raw bytes for VkShaderModule creation.
 	std::ifstream file(filepath, std::ios::ate | std::ios::binary);
