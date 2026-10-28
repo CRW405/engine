@@ -24,9 +24,15 @@ int image_texture_example();
 int main(int argc, char *argv[]) {
 	int example = 0;
 	if (argc > 1) {
-		example = std::atoi(argv[1]);
+		std::string arg1 = argv[1];
+		if (arg1 == "all") {
+			vulkan_triangle();
+			sierpinski_triangle();
+			image_texture_example();
+			return 0;
+		}
 	}
-
+	example = std::atoi(argv[1]);
 	switch (example) {
 	case 0:
 		return vulkan_triangle();
