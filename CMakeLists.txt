@@ -9,6 +9,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Vulkan REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 
+find_path(STB_INCLUDE_DIR stb_image.h
+    PATHS /usr/include/stb
+)
+if(NOT STB_INCLUDE_DIR)
+    message(FATAL_ERROR "stb headers not found!")
+endif()
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE ${STB_INCLUDE_DIR})
+
 set(SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders")
 set(SHADER_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 find_program(GLSLC_EXECUTABLE glslc)
@@ -57,7 +66,7 @@ target_include_directories(engine PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/glfw"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/vulkan"
 )
-target_link_libraries(engine PRIVATE Vulkan::Vulkan glfw)
+target_link_libraries(engine PRIVATE Vulkan::Vulkan glfw stb)
 
 if(MSVC)
     target_compile_options(engine PRIVATE /W4)

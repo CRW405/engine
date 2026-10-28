@@ -41,7 +41,9 @@ class VulkanDevice {
 	[[nodiscard]] VkDevice         device() const noexcept { return device_; }
 	[[nodiscard]] VkQueue          graphicsQueue() const noexcept { return graphics_queue_; }
 	[[nodiscard]] VkQueue          presentQueue() const noexcept { return present_queue_; }
+	[[nodiscard]] VkCommandPool    commandPool() const noexcept { return command_pool_; }
 	[[nodiscard]] QueueFamilies    findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) const;
+	[[nodiscard]] std::uint32_t    findMemoryType(std::uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
 	void                           waitIdle() const;
 
   private:
@@ -57,6 +59,7 @@ class VulkanDevice {
 	VkDevice         device_          = VK_NULL_HANDLE;
 	VkQueue          graphics_queue_  = VK_NULL_HANDLE;
 	VkQueue          present_queue_   = VK_NULL_HANDLE;
+	VkCommandPool    command_pool_    = VK_NULL_HANDLE;
 	VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;
 };
 

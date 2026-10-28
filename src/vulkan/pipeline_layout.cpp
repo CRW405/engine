@@ -49,4 +49,22 @@ PipelineLayout::~PipelineLayout() {
 	}
 }
 
+void PipelineLayout::bindDescriptorSet(
+    VkCommandBuffer commandBuffer,
+    VkDescriptorSet descriptorSet,
+    std::uint32_t   firstSet) const {
+	// -------------------------------------------------------------------------
+	// Bind one set through this layout. The engine does not use dynamic offsets;
+	// call vkCmdBindDescriptorSets directly when a shader needs them.
+	// -------------------------------------------------------------------------
+	vkCmdBindDescriptorSets(commandBuffer,
+	                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+	                        layout_,
+	                        firstSet,
+	                        1,
+	                        &descriptorSet,
+	                        0,
+	                        nullptr);
+}
+
 }

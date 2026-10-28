@@ -37,6 +37,12 @@ class PipelineLayout {
 
 	[[nodiscard]] VkPipelineLayout handle() const noexcept { return layout_; }
 
+	// Bind one descriptor set for the common no-dynamic-offset case.
+	void bindDescriptorSet(
+	    VkCommandBuffer commandBuffer,
+	    VkDescriptorSet descriptorSet,
+	    std::uint32_t   firstSet = 0) const;
+
   private:
 	VulkanDevice    &device_;
 	VkPipelineLayout layout_ = VK_NULL_HANDLE;

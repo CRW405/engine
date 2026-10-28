@@ -125,10 +125,28 @@ void PipelineConfigInfo::refreshInternalPointers() noexcept {
 	vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributes_.size());
 }
 
-void PipelineConfigInfo::setVertexInput(const VertexInputDescription &description) {
+// -----------------------------------------------------------------------------
+// Pipeline configuration helpers
+//
+// These setters cover the common setup while leaving every field public. An
+// application can keep chaining the helpers or assign the Vulkan fields
+// directly when it needs different fixed-function state.
+// -----------------------------------------------------------------------------
+PipelineConfigInfo &PipelineConfigInfo::setVertexInput(const VertexInputDescription &description) {
 	vertexBindings_   = description.bindings;
 	vertexAttributes_ = description.attributes;
 	refreshInternalPointers();
+	return *this;
+}
+
+PipelineConfigInfo &PipelineConfigInfo::setRenderPass(VkRenderPass renderPass) noexcept {
+	this->renderPass = renderPass;
+	return *this;
+}
+
+PipelineConfigInfo &PipelineConfigInfo::setPipelineLayout(VkPipelineLayout pipelineLayout) noexcept {
+	this->pipelineLayout = pipelineLayout;
+	return *this;
 }
 
 Pipeline::Pipeline(

@@ -100,6 +100,14 @@ VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_
 		selectPhysicalDevice(selection_surface);
 		createLogicalDevice(selection_surface);
 	} catch (...) {
+		if (command_pool_ != VK_NULL_HANDLE) {
+			vkDestroyCommandPool(device_, command_pool_, nullptr);
+			command_pool_ = VK_NULL_HANDLE;
+		}
+		if (device_ != VK_NULL_HANDLE) {
+			vkDestroyDevice(device_, nullptr);
+			device_ = VK_NULL_HANDLE;
+		}
 		vkDestroySurfaceKHR(instance_, selection_surface, nullptr);
 		destroyDebugMessenger();
 		vkDestroyInstance(instance_, nullptr);
@@ -112,6 +120,9 @@ VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_
 VulkanDevice::~VulkanDevice() {
 	if (device_ != VK_NULL_HANDLE) {
 		waitIdle();
+		if (command_pool_ != VK_NULL_HANDLE) {
+			vkDestroyCommandPool(device_, command_pool_, nullptr);
+		}
 		vkDestroyDevice(device_, nullptr);
 	}
 	destroyDebugMessenger();
@@ -239,6 +250,20 @@ QueueFamilies VulkanDevice::findQueueFamilies(VkPhysicalDevice device, VkSurface
 	return result;
 }
 
+std::uint32_t VulkanDevice::findMemoryType(std::uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
+	VkPhysicalDeviceMemoryProperties memory_properties;
+	vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties);
+
+	for (std::uint32_t index = 0; index < memory_properties.memoryTypeCount; ++index) {
+		if ((typeFilter & (1u << index)) != 0 &&
+		    (memory_properties.memoryTypes[index].propertyFlags & properties) == properties) {
+			return index;
+		}
+	}
+
+	throw std::runtime_error("failed to find suitable memory type");
+}
+
 void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
 	//
 	// Prefer the first device that can draw, present, and expose the swapchain
@@ -297,6 +322,14 @@ void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface) {
 
 	vkGetDeviceQueue(device_, queues.graphics, 0, &graphics_queue_);
 	vkGetDeviceQueue(device_, queues.present, 0, &present_queue_);
+
+	VkCommandPoolCreateInfo pool_info{};
+	pool_info.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	pool_info.flags            = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+	pool_info.queueFamilyIndex = queues.graphics;
+	if (vkCreateCommandPool(device_, &pool_info, nullptr, &command_pool_) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create command pool");
+	}
 }
 
 }

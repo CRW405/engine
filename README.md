@@ -15,6 +15,7 @@ It handles the setup that most Vulkan programs need:
 - Render passes and framebuffers
 - Command buffers and frame synchronization
 - Vertex and index buffers
+- Texture loading and sampled image descriptor sets
 - Pipeline layouts and graphics pipelines
 
 The code keeps Vulkan objects visible and explicit. It reduces repeated setup
@@ -59,9 +60,18 @@ pool, and synchronization objects.
 `Buffer` provides the common buffer and memory code. `VertexBuffer` and
 `IndexBuffer` add the binding operations needed for drawing.
 
+`ImageTexture` loads an image and owns its image view and sampler.
+`TextureDescriptorSet` owns the descriptor set layout, pool, and set needed to
+sample that texture. Its defaults describe one combined image sampler at binding
+`0` in the fragment stage. Pass a different binding or stage to the constructor
+when a shader needs another interface; create the descriptor objects directly
+with Vulkan for more complex layouts.
+
 `PipelineLayout` describes push constants and descriptor set layouts.
 `Pipeline` loads SPIR-V shader files and creates a graphics pipeline from
-configurable fixed-function state.
+configurable fixed-function state. `defaultPipelineConfigInfo()` provides a
+sensible starting point, while the pipeline config fields stay public and can be
+overridden for custom rendering state.
 
 The current buffer implementation uses host-visible, host-coherent memory.
 That keeps data upload simple. A larger renderer would usually upload through
@@ -78,7 +88,7 @@ A program using the engine normally follows this order:
 2. Create a `Window`.
 3. Create a `VulkanDevice` using the window.
 4. Create a `VulkanContext`.
-5. Create pipeline layouts, pipelines, and buffers.
+5. Create textures, descriptor sets, pipeline layouts, pipelines, and buffers.
 6. Start the render loop.
 7. Poll window events and read input.
 8. Call `beginFrame()`.
@@ -86,6 +96,9 @@ A program using the engine normally follows this order:
 10. Bind pipelines and buffers, then issue draw commands.
 11. End the render pass and call `endFrame()`.
 12. Wait for the device to become idle before resources are destroyed.
+
+Draw commands such as `vkCmdDrawIndexed` stay explicit. The helpers cover
+resource setup and binding without forcing a command-recording policy.
 
 If the window changes size, the context recreates the swapchain and the
 resources that depend on it. `beginFrame()` returns an empty frame while that

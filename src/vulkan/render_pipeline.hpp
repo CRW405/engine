@@ -56,7 +56,11 @@ struct PipelineConfigInfo {
 	VkRenderPass                           renderPass     = VK_NULL_HANDLE;
 	uint32_t                               subpass        = 0;
 
-	void setVertexInput(const VertexInputDescription &description);
+	// Convenience helpers for the common setup. The public fields below remain
+	// available for applications that need to override individual values.
+	PipelineConfigInfo &setVertexInput(const VertexInputDescription &description);
+	PipelineConfigInfo &setRenderPass(VkRenderPass renderPass) noexcept;
+	PipelineConfigInfo &setPipelineLayout(VkPipelineLayout pipelineLayout) noexcept;
 
   private:
 	void refreshInternalPointers() noexcept;

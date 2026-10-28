@@ -5,30 +5,6 @@
 
 namespace engine {
 
-namespace {
-
-// -----------------------------------------------------------------------------
-// Host-visible buffer memory helpers
-// -----------------------------------------------------------------------------
-std::uint32_t findMemoryType(
-    VulkanDevice         &device,
-    std::uint32_t         typeFilter,
-    VkMemoryPropertyFlags properties) {
-	VkPhysicalDeviceMemoryProperties memoryProperties;
-	vkGetPhysicalDeviceMemoryProperties(device.physicalDevice(), &memoryProperties);
-
-	for (std::uint32_t index = 0; index < memoryProperties.memoryTypeCount; ++index) {
-		if ((typeFilter & (1u << index)) &&
-		    (memoryProperties.memoryTypes[index].propertyFlags & properties) == properties) {
-			return index;
-		}
-	}
-
-	throw std::runtime_error("failed to find suitable buffer memory type");
-}
-
-} // namespace
-
 // -----------------------------------------------------------------------------
 // Buffer lifetime and data upload
 // -----------------------------------------------------------------------------
@@ -54,8 +30,7 @@ Buffer::Buffer(VulkanDevice &device, const void *data, VkDeviceSize size, VkBuff
 	VkMemoryAllocateInfo allocation{};
 	allocation.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocation.allocationSize  = memoryRequirements.size;
-	allocation.memoryTypeIndex = findMemoryType(
-	    device_,
+	allocation.memoryTypeIndex = device_.findMemoryType(
 	    memoryRequirements.memoryTypeBits,
 	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 

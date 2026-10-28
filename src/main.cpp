@@ -1,8 +1,10 @@
 #include "glfw/glfw_engine.hpp"
 #include "tools/fps.hpp"
 #include "vulkan/buffer.hpp"
+#include "vulkan/image_texture.hpp"
 #include "vulkan/pipeline_layout.hpp"
 #include "vulkan/render_pipeline.hpp"
+#include "vulkan/texture_descriptor.hpp"
 #include "vulkan/vulkan_context.hpp"
 #include "vulkan/vulkan_device.hpp"
 
@@ -17,15 +19,18 @@
 
 int vulkan_triangle();
 int sierpinski_triangle();
+int image_texture_example();
 
 int main() {
 	try {
-		// return vulkan_triangle();
-		return sierpinski_triangle();
+		vulkan_triangle();
+		sierpinski_triangle();
+		image_texture_example();
 	} catch (const std::exception &e) {
 		std::fprintf(stderr, "Error: %s\n", e.what());
 		return EXIT_FAILURE;
 	}
+	return EXIT_SUCCESS;
 }
 
 // -----------------------------------------------------------------------------
@@ -140,7 +145,6 @@ int vulkan_triangle() {
 			    0,
 			    0,
 			    0);
-
 			vulkan.endRenderPass(frame);
 
 			vulkan.endFrame(frame);
@@ -242,5 +246,91 @@ int sierpinski_triangle() {
 	}
 	fps.finish();
 	device.waitIdle();
+	return 0;
+}
+
+struct texture_vertex {
+	float position[2];
+	float color[3];
+	float uv[2]; // a uv is a 2D coordinate that maps a point on the texture to a point on the mesh
+};
+int image_texture_example() {
+	std::printf("Running Image Texture Example\n");
+	try {
+		std::string           app_name = "Image Texture Example";
+		engine::GLFWContext   glfw;
+		engine::Window        window({ 800, 600, app_name, true });
+		engine::VulkanDevice  device(window.handle(), app_name);
+		engine::VulkanContext vulkan(device, &window);
+
+		// set up texture and the default sampled-image descriptor set
+		engine::ImageTexture         texture(device, "../assets/smiley_0.png");
+		engine::TextureDescriptorSet textureDescriptor(device, texture);
+
+		// pipeline setup
+		engine::PipelineLayout     pipeline_layout(device, { textureDescriptor.layout() }, {});
+		engine::PipelineConfigInfo pipeline_Config = engine::Pipeline::defaultPipelineConfigInfo();
+
+		// vertex input description
+		engine::VertexInputDescription vertexInput;
+		vertexInput.addBinding(0, sizeof(texture_vertex))
+		    .addAttribute(0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(texture_vertex, position))
+		    .addAttribute(1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(texture_vertex, color))
+		    .addAttribute(2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(texture_vertex, uv));
+		pipeline_Config.setVertexInput(vertexInput)
+		    .setRenderPass(vulkan.renderPass())
+		    .setPipelineLayout(pipeline_layout.handle());
+
+		engine::Pipeline pipeline(device,
+		                          "shaders/simple_texture.vert.spv",
+		                          "shaders/simple_texture.frag.spv",
+		                          pipeline_Config);
+
+		std::vector<texture_vertex> vertices = {
+			{ { -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f } },
+			{ { 0.5f, -0.5f },  { 0.0f, 1.0f, 0.0f }, { 1.0f, 1.0f } },
+			{ { 0.5f, 0.5f },   { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f } },
+			{ { -0.5f, 0.5f },  { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } }
+		};
+		const std::vector<std::uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
+		engine::VertexBuffer             vertex_buffer(device, vertices.data(), sizeof(texture_vertex) * vertices.size());
+		engine::IndexBuffer              index_buffer(device, indices.data(), sizeof(std::uint16_t) * indices.size(), VK_INDEX_TYPE_UINT16);
+
+		while (!window.shouldClose()) {
+			window.pollEvents();
+			if (window.keyPressed(GLFW_KEY_ESCAPE) || window.keyPressed(GLFW_KEY_Q)) {
+				glfwSetWindowShouldClose(window.handle(), GLFW_TRUE);
+			}
+
+			const engine::Frame frame = vulkan.beginFrame();
+			if (frame.commandBuffer == VK_NULL_HANDLE) {
+				continue;
+			}
+
+			vulkan.beginRenderPass(frame, { 0.0f, 0.0f, 0.0f, 0.0f });
+
+			vertex_buffer.bind(frame.commandBuffer);
+			index_buffer.bind(frame.commandBuffer);
+
+			pipeline_layout.bindDescriptorSet(frame.commandBuffer, textureDescriptor.descriptorSet());
+
+			pipeline.bind(frame.commandBuffer);
+			vulkan.setViewportAndScissor(frame.commandBuffer);
+
+			vkCmdDrawIndexed(frame.commandBuffer,
+			                 static_cast<std::uint32_t>(indices.size()),
+			                 1,
+			                 0,
+			                 0,
+			                 0);
+
+			vulkan.endRenderPass(frame);
+			vulkan.endFrame(frame);
+		}
+		device.waitIdle();
+
+	} catch (const std::exception &error) {
+		std::fprintf(stderr, "Fatal error: %s\n", error.what());
+	}
 	return 0;
 }
