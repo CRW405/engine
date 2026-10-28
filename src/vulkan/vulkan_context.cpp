@@ -30,6 +30,8 @@ VulkanContext::VulkanContext(VulkanDevice &device, Window *window) : device_(dev
 		throw std::invalid_argument("VulkanContext requires a valid window");
 	}
 
+	transparent_ = window_->transparent();
+
 	glfwSetWindowUserPointer(window_->handle(), this);
 	glfwSetFramebufferSizeCallback(window_->handle(), framebufferResizeCallback);
 	createSurface();
@@ -115,6 +117,24 @@ void VulkanContext::createSwapchain() {
 	        ? VK_PRESENT_MODE_MAILBOX_KHR
 	        : VK_PRESENT_MODE_FIFO_KHR;
 
+	// Wayland composites the surface using its alpha channel only when the
+	// surface is not marked opaque. Prefer pre-multiplied alpha because it is
+	// the common transparent mode; fall back to whatever the surface supports.
+	VkCompositeAlphaFlagBitsKHR composite_alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	if (transparent_) {
+		const VkCompositeAlphaFlagBitsKHR transparent_modes[] = {
+			VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+			VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+			VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+		};
+		for (VkCompositeAlphaFlagBitsKHR mode : transparent_modes) {
+			if ((support.capabilities.supportedCompositeAlpha & mode) != 0) {
+				composite_alpha = mode;
+				break;
+			}
+		}
+	}
+
 	if (support.capabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()) {
 		swapchain_extent_ = support.capabilities.currentExtent;
 	} else {
@@ -149,7 +169,7 @@ void VulkanContext::createSwapchain() {
 	info.queueFamilyIndexCount = separate_queues ? 2 : 0;
 	info.pQueueFamilyIndices   = separate_queues ? queue_families : nullptr;
 	info.preTransform          = support.capabilities.currentTransform;
-	info.compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	info.compositeAlpha        = composite_alpha;
 	info.presentMode           = present_mode;
 	info.clipped               = VK_TRUE;
 	if (vkCreateSwapchainKHR(device_.device(), &info, nullptr, &swapchain_) != VK_SUCCESS) {

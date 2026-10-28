@@ -74,7 +74,7 @@ int vulkan_triangle() {
 		// happens in the reverse order automatically.
 		// -------------------------------------------------------------------------
 		engine::GLFWContext   glfw;
-		engine::Window        window({ 500, 500, "Engine", true });
+		engine::Window        window({ 500, 500, "Engine", true, true, false });
 		engine::VulkanDevice  device(window.handle(), "Engine");
 		engine::VulkanContext vulkan(device, &window);
 
@@ -132,7 +132,7 @@ int vulkan_triangle() {
 			// Begin the render pass against the image acquired for this frame.
 			// The swapchain extent is the framebuffer size Vulkan is actually using.
 			// -------------------------------------------------------------------------
-			vulkan.beginRenderPass(frame, { 1.0f, 1.0f, 1.0f, 1.0f });
+			vulkan.beginRenderPass(frame, { 0.0f, 0.0f, 0.0f, 0.0f });
 
 			// Bind state first, then issue the draw commands that use it.
 			pipeline.bind(frame.commandBuffer);
@@ -530,7 +530,10 @@ int showcase_example() {
 		// -------------------------------------------------------------------------
 		// Application state used by the controls below.
 		// -------------------------------------------------------------------------
-		showcase_push_constants push{ { 1.0f, 1.0f, 1.0f, 1.0f }, 0.0f };
+		showcase_push_constants push{
+			{ 1.0f, 1.0f, 1.0f, 1.0f },
+			0.0f
+		};
 		double animation_time = 0.0;
 		double previous_time  = window.time();
 		float  distance       = 2.8f;
@@ -561,7 +564,7 @@ int showcase_example() {
 
 			// Scroll events are accumulated until consumed.
 			const engine::MousePosition scroll = window.consumeScrollDelta();
-			distance = glm_clamp(distance * std::exp(static_cast<float>(-scroll.y) * 0.15f), 1.5f, 6.0f);
+			distance                           = glm_clamp(distance * std::exp(static_cast<float>(-scroll.y) * 0.15f), 1.5f, 6.0f);
 
 			const double now   = window.time();
 			const double delta = now - previous_time;
@@ -599,11 +602,13 @@ int showcase_example() {
 			glm_rotate(ubo.model, static_cast<float>(animation_time) * glm_rad(45.0f), y_axis);
 
 			if (dragging) {
-				const engine::MousePosition cursor = window.cursorPosition();
-				const float cursor_x = static_cast<float>(cursor.x) /
-				                       static_cast<float>(window.width()) - 0.5f;
-				const float cursor_y = static_cast<float>(cursor.y) /
-				                       static_cast<float>(window.height()) - 0.5f;
+				const engine::MousePosition cursor   = window.cursorPosition();
+				const float                 cursor_x = static_cast<float>(cursor.x) /
+				                                           static_cast<float>(window.width()) -
+				                                       0.5f;
+				const float                 cursor_y = static_cast<float>(cursor.y) /
+				                                           static_cast<float>(window.height()) -
+				                                       0.5f;
 				glm_rotate(ubo.model, cursor_x * glm_rad(90.0f), y_axis);
 				glm_rotate(ubo.model, -cursor_y * glm_rad(90.0f), x_axis);
 			}

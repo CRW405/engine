@@ -34,7 +34,7 @@ void main() {
 
     // Color and boundary output
     if (!solid || c.x < 0.0 || c.y < 0.0 || (c.x + c.y > 1.0)) {
-        outColor = vec4(0.0, 0.0, 0.0, 1.0); // Background / Hole
+        outColor = vec4(0.0, 0.0, 0.0, 0.0); // Background / Hole
     } else {
         outColor = vec4(1.0, 1.0, 1.0, 1.0); // Fractal shape color
     }

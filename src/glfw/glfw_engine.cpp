@@ -34,7 +34,9 @@ Window::Window(const WindowConfig &config) {
 	// Step 3: create a window with Vulkan presentation handled externally.
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GLFW_TRUE : GLFW_FALSE);
-	glfwWindowHintString(GLFW_WAYLAND_APP_ID, "make-me-float");
+	glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, config.transparent ? GLFW_TRUE : GLFW_FALSE);
+	glfwWindowHint(GLFW_DECORATED, config.decorated ? GLFW_FALSE : GLFW_TRUE);
+	glfwWindowHintString(GLFW_WAYLAND_APP_ID, "make-me-float"); // debug helper for hyprland
 	window_ = glfwCreateWindow(config.width, config.height, config.title.c_str(), nullptr, nullptr);
 	if (window_ == nullptr) {
 		throw std::runtime_error("failed to create GLFW window");
@@ -98,6 +100,11 @@ int Window::height() const noexcept {
 
 bool Window::shouldClose() const noexcept {
 	return window_ == nullptr || glfwWindowShouldClose(window_) == GLFW_TRUE;
+}
+
+bool Window::transparent() const noexcept {
+	return window_ != nullptr &&
+	       glfwGetWindowAttrib(window_, GLFW_TRANSPARENT_FRAMEBUFFER) == GLFW_TRUE;
 }
 
 void Window::pollEvents() const noexcept {

@@ -4,17 +4,19 @@
 #include <GLFW/glfw3.h>
 
 #include <string>
-#include <utility>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace engine {
 
 struct WindowConfig {
-	int         width     = 500;
-	int         height    = 500;
-	std::string title     = "Engine";
-	bool        resizable = true;
+	int         width       = 500;
+	int         height      = 500;
+	std::string title       = "Engine";
+	bool        resizable   = true;
+	bool        transparent = false;
+	bool        decorated   = true;
 };
 
 struct MousePosition {
@@ -42,15 +44,16 @@ class Window {
 	Window(Window &&) noexcept;
 	Window &operator=(Window &&) noexcept;
 
-	[[nodiscard]] GLFWwindow *handle() const noexcept { return window_; }
-	[[nodiscard]] int         width() const noexcept;
-	[[nodiscard]] int         height() const noexcept;
-	[[nodiscard]] bool        shouldClose() const noexcept;
-	void                      pollEvents() const noexcept;
-	[[nodiscard]] double      time() const noexcept;
-	[[nodiscard]] bool        keyPressed(int key) noexcept;
-	[[nodiscard]] bool        keyReleased(int key) const noexcept;
-	[[nodiscard]] bool        mouseButtonDown(int button) const noexcept;
+	[[nodiscard]] GLFWwindow   *handle() const noexcept { return window_; }
+	[[nodiscard]] int           width() const noexcept;
+	[[nodiscard]] int           height() const noexcept;
+	[[nodiscard]] bool          shouldClose() const noexcept;
+	[[nodiscard]] bool          transparent() const noexcept;
+	void                        pollEvents() const noexcept;
+	[[nodiscard]] double        time() const noexcept;
+	[[nodiscard]] bool          keyPressed(int key) noexcept;
+	[[nodiscard]] bool          keyReleased(int key) const noexcept;
+	[[nodiscard]] bool          mouseButtonDown(int button) const noexcept;
 	[[nodiscard]] MousePosition cursorPosition() const noexcept;
 	[[nodiscard]] MousePosition consumeScrollDelta() noexcept;
 
@@ -60,7 +63,7 @@ class Window {
 	void        handleKeyEvent(int key, int action) noexcept;
 	void        handleScrollEvent(double x_offset, double y_offset) noexcept;
 
-	GLFWwindow *window_ = nullptr;
+	GLFWwindow             *window_ = nullptr;
 	std::unordered_set<int> pressed_keys_;
 	MousePosition           scroll_delta_;
 

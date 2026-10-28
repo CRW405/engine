@@ -94,6 +94,7 @@ class VulkanContext {
 
 	std::uint32_t current_frame_       = 0;
 	bool          framebuffer_resized_ = false;
+	bool          transparent_         = false;
 };
 
 }
