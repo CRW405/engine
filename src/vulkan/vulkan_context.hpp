@@ -40,6 +40,7 @@ class VulkanContext {
 	[[nodiscard]] VkRenderPass                    renderPass() const noexcept { return render_pass_; }
 	[[nodiscard]] VkExtent2D                      extent() const noexcept { return swapchain_extent_; }
 	[[nodiscard]] VkFormat                        swapchainFormat() const noexcept { return swapchain_format_; }
+	[[nodiscard]] VkFormat                        depthFormat() const noexcept { return depth_format_; }
 	[[nodiscard]] const std::vector<VkImage>     &swapchainImages() const noexcept { return swapchain_images_; }
 	[[nodiscard]] const std::vector<VkImageView> &swapchainImageViews() const noexcept {
 		return swapchain_image_views_;
@@ -63,15 +64,18 @@ class VulkanContext {
 
 	void createSurface();
 	void createSwapchain();
+	void createDepthResources();
 	void createRenderPass();
 	void createFramebuffers();
 	void createCommandResources();
 
 	void destroySwapchain(bool destroy_render_pass = true);
+	void destroyDepthResources() noexcept;
 	void destroyWindowResources() noexcept;
 
 	void waitForValidFramebufferSize() const;
 
+	[[nodiscard]] VkFormat                findDepthFormat() const;
 	[[nodiscard]] SwapchainSupportDetails querySwapchainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) const;
 
 	VulkanDevice &device_;
@@ -80,10 +84,14 @@ class VulkanContext {
 	VkSurfaceKHR                                      surface_          = VK_NULL_HANDLE;
 	VkSwapchainKHR                                    swapchain_        = VK_NULL_HANDLE;
 	VkFormat                                          swapchain_format_ = VK_FORMAT_UNDEFINED;
+	VkFormat                                          depth_format_     = VK_FORMAT_UNDEFINED;
 	VkExtent2D                                        swapchain_extent_{};
 	std::vector<VkImage>                              swapchain_images_;
 	std::vector<VkImageView>                          swapchain_image_views_;
 	std::vector<VkFramebuffer>                        swapchain_framebuffers_;
+	VkImage                                           depth_image_        = VK_NULL_HANDLE;
+	VkDeviceMemory                                    depth_image_memory_ = VK_NULL_HANDLE;
+	VkImageView                                       depth_image_view_   = VK_NULL_HANDLE;
 	VkRenderPass                                      render_pass_  = VK_NULL_HANDLE;
 	VkCommandPool                                     command_pool_ = VK_NULL_HANDLE;
 	std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers_{};

@@ -12,7 +12,7 @@ It handles the setup that most Vulkan programs need:
 - Physical and logical device selection
 - Graphics and presentation queues
 - Swapchain creation and recreation
-- Render passes and framebuffers
+- Render passes and framebuffers with a depth attachment
 - Command buffers and frame synchronization
 - Vertex and index buffers
 - Texture loading and sampled image descriptor sets
@@ -87,7 +87,8 @@ cmake --build build -j
 ```
 
 Disabling validation skips the validation layer and debug messenger. Disabling
-logging compiles the `OXIDE_LOG_*` statements down to no-ops.
+logging makes the `OXIDE_LOG_*` statements discard their output; their
+arguments are still evaluated.
 
 ## Diagnostics
 
@@ -116,13 +117,58 @@ Exceptions thrown by the engine embed their throw site in `what()`. Example
 programs catch `std::exception` and report it with `OXIDE_LOG_FATAL`, then exit
 with a non-zero status. New diagnostics should use the `OXIDE_LOG_*` macros so
 they automatically report the call site. With `-DOXIDE_ENABLE_LOGGING=OFF`,
-those macros compile to no-ops, but exception behavior is unchanged.
+those macros discard their output (their arguments are still evaluated), but
+exception behavior is unchanged.
 
 ## TODO
 
-- OBJ reader
-- GLTF reader
-- DOD Refactor
+The highest-priority items from [`CODE_REVIEW.md`](CODE_REVIEW.md). That file
+has the full findings, severity levels, and suggested fixes.
+
+### Correctness
+
+- [ ] Add a device-idle guard so resource destructors cannot race in-flight GPU work (C1)
+- [ ] Make `waitForValidFramebufferSize()` respect window close instead of blocking forever (C2)
+- [ ] Expose swapchain recreation so applications can rebuild pipelines after a format change (C3)
+- [ ] Include Vulkan directly in public headers instead of relying on `GLFW_INCLUDE_VULKAN` (C4)
+- [ ] Stop claiming the GLFW window user pointer in `VulkanContext` (C5)
+- [ ] Fix the examples' OpenGL-style projection (Y flip and zero-to-one depth) (C6)
+
+### Rendering
+
+- [ ] MSAA, multiple render targets, and resolve
+- [ ] Offscreen and headless rendering
+- [ ] Compute pipelines (CMake already compiles `.comp` shaders)
+- [ ] Pipeline cache, shader reflection, and specialization constants
+- [ ] Configurable swapchain (present mode, format/HDR, image usage)
+
+### Performance and resources
+
+- [ ] Memory allocator instead of one `vkAllocateMemory` per resource
+- [ ] Staging uploads and device-local vertex/index buffers
+- [ ] Persistent mapping for host-visible buffers
+- [ ] Texture mipmaps, format selection, and sampler configuration
+
+### Device and platform
+
+- [ ] Score physical devices instead of selecting the first suitable one
+- [ ] Query and enable device features; recover from device and surface loss
+- [ ] MoltenVK portability support (`VK_KHR_portability_enumeration`)
+- [ ] Fall back with a warning when validation layers are unavailable
+
+### Packaging and quality
+
+- [ ] Declare `cglm` and `stb` dependencies in CMake
+- [ ] Add `install()`/exported package support for `find_package(oxide)`
+- [ ] Move public headers under a namespaced include root (`include/oxide/...`)
+- [ ] Add tests and a CI matrix for validation/logging on and off
+- [ ] Add a LICENSE and formatting/lint configuration
+
+### Engine and assets
+
+- [ ] OBJ reader
+- [ ] GLTF reader
+- [ ] DOD Refactor
 
 ## Technical overview
 
@@ -132,11 +178,13 @@ dependency order and destroyed in reverse, and the public API lives in the
 
 `VulkanDevice` owns the Vulkan instance, selected physical device, logical
 device, debug messenger, shared command pool, and graphics/present queues.
-`VulkanContext` owns everything tied to one window: surface, swapchain, image
-views, render pass, framebuffers, command buffers, semaphores, and fences. It
-also handles resize and swapchain recreation. The frame loop keeps two frames
-in flight; `beginFrame()` waits on the current slot's fence and returns an empty
-frame while the swapchain is rebuilt.
+`VulkanContext` owns everything tied to one window: surface, swapchain, color
+image views, a depth image and view, render pass, framebuffers, command buffers,
+semaphores, and fences. The depth format is selected from the formats the
+physical device supports for depth-stencil attachments, preferring
+`VK_FORMAT_D32_SFLOAT`. It also handles resize and swapchain recreation. The
+frame loop keeps two frames in flight; `beginFrame()` waits on the current
+slot's fence and returns an empty frame while the swapchain is rebuilt.
 
 Drawing resources follow the same pattern, with one wrapper per Vulkan concept:
 buffers and meshes, images and textures, descriptor layouts/pools/sets, pipeline

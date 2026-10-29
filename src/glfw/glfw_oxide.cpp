@@ -49,8 +49,8 @@ Window::Window(const WindowConfig &config) {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GLFW_TRUE : GLFW_FALSE);
 	glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, config.transparent ? GLFW_TRUE : GLFW_FALSE);
-	glfwWindowHint(GLFW_DECORATED, config.decorated ? GLFW_FALSE : GLFW_TRUE);
-	glfwWindowHintString(GLFW_WAYLAND_APP_ID, "make-me-float"); // debug helper for hyprland
+	glfwWindowHint(GLFW_DECORATED, config.decorated ? GLFW_TRUE : GLFW_FALSE);
+	// glfwWindowHintString(GLFW_WAYLAND_APP_ID, "make-me-float"); // debug helper for hyprland
 	window_ = glfwCreateWindow(config.width, config.height, config.title.c_str(), nullptr, nullptr);
 	if (window_ == nullptr) {
 		const char *description = nullptr;
@@ -65,39 +65,69 @@ Window::Window(const WindowConfig &config) {
 
 Window::~Window() {
 	// Destroying the window releases the native handle owned by this wrapper.
-	if (window_ != nullptr) {
-		instances_.erase(window_);
-		glfwSetKeyCallback(window_, nullptr);
-		glfwSetScrollCallback(window_, nullptr);
-		glfwDestroyWindow(window_);
-	}
+	release();
 }
 
 Window::Window(Window &&other) noexcept
-    : window_(other.window_), pressed_keys_(std::move(other.pressed_keys_)) {
+    : window_(other.window_),
+      pressed_keys_(std::move(other.pressed_keys_)),
+      scroll_delta_(other.scroll_delta_) {
 	if (window_ != nullptr) {
 		instances_[window_] = this;
 	}
-	other.window_ = nullptr;
+	other.window_       = nullptr;
+	other.scroll_delta_ = {};
 }
 
 Window &Window::operator=(Window &&other) noexcept {
-	// Move assignment replaces this wrapper's owned native handle.
+	// Move assignment replaces this wrapper's owned native handle. Release the
+	// previous handle first so its callback mapping cannot outlive it.
 	if (this != &other) {
-		if (window_ != nullptr) {
-			glfwDestroyWindow(window_);
-		}
+		release();
 		window_       = other.window_;
 		pressed_keys_ = std::move(other.pressed_keys_);
+		scroll_delta_ = other.scroll_delta_;
 		if (window_ != nullptr) {
 			instances_[window_] = this;
 		}
-		other.window_ = nullptr;
+		other.window_       = nullptr;
+		other.scroll_delta_ = {};
 	}
 	return *this;
 }
 
+void Window::release() noexcept {
+	// Drop the mapping and callbacks before destroying the handle so any event
+	// delivered during teardown cannot reach this wrapper.
+	if (window_ == nullptr) {
+		return;
+	}
+	instances_.erase(window_);
+	glfwSetKeyCallback(window_, nullptr);
+	glfwSetScrollCallback(window_, nullptr);
+	glfwDestroyWindow(window_);
+	window_ = nullptr;
+}
+
 int Window::width() const noexcept {
+	int width  = 0;
+	int height = 0;
+	if (window_ != nullptr) {
+		glfwGetWindowSize(window_, &width, &height);
+	}
+	return width;
+}
+
+int Window::height() const noexcept {
+	int width  = 0;
+	int height = 0;
+	if (window_ != nullptr) {
+		glfwGetWindowSize(window_, &width, &height);
+	}
+	return height;
+}
+
+int Window::framebufferWidth() const noexcept {
 	int width  = 0;
 	int height = 0;
 	if (window_ != nullptr) {
@@ -106,7 +136,7 @@ int Window::width() const noexcept {
 	return width;
 }
 
-int Window::height() const noexcept {
+int Window::framebufferHeight() const noexcept {
 	int width  = 0;
 	int height = 0;
 	if (window_ != nullptr) {

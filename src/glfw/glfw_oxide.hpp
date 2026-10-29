@@ -45,8 +45,17 @@ class Window {
 	Window &operator=(Window &&) noexcept;
 
 	[[nodiscard]] GLFWwindow   *handle() const noexcept { return window_; }
-	[[nodiscard]] int           width() const noexcept;
-	[[nodiscard]] int           height() const noexcept;
+
+	// Content size in screen coordinates. This is the same coordinate space as
+	// cursorPosition(), so cursor positions can be normalized by these values.
+	[[nodiscard]] int width() const noexcept;
+	[[nodiscard]] int height() const noexcept;
+
+	// Drawable size in pixels. Differs from width()/height() on displays with a
+	// content scale other than 1.0 (for example HiDPI screens).
+	[[nodiscard]] int framebufferWidth() const noexcept;
+	[[nodiscard]] int framebufferHeight() const noexcept;
+
 	[[nodiscard]] bool          shouldClose() const noexcept;
 	[[nodiscard]] bool          transparent() const noexcept;
 	void                        pollEvents() const noexcept;
@@ -54,6 +63,8 @@ class Window {
 	[[nodiscard]] bool          keyPressed(int key) noexcept;
 	[[nodiscard]] bool          keyReleased(int key) const noexcept;
 	[[nodiscard]] bool          mouseButtonDown(int button) const noexcept;
+
+	// Cursor position relative to the content area, in screen coordinates.
 	[[nodiscard]] MousePosition cursorPosition() const noexcept;
 	[[nodiscard]] MousePosition consumeScrollDelta() noexcept;
 
@@ -62,6 +73,7 @@ class Window {
 	static void scrollCallback(GLFWwindow *window, double x_offset, double y_offset);
 	void        handleKeyEvent(int key, int action) noexcept;
 	void        handleScrollEvent(double x_offset, double y_offset) noexcept;
+	void        release() noexcept;
 
 	GLFWwindow             *window_ = nullptr;
 	std::unordered_set<int> pressed_keys_;
