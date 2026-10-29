@@ -1,5 +1,5 @@
-#include "uniform_buffer_ring.hpp"
-#include "tools/log.hpp"
+#include <oxide/vulkan/uniform_buffer_ring.hpp>
+#include <oxide/tools/log.hpp>
 
 #include <string>
 

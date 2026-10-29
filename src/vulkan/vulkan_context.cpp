@@ -1,17 +1,27 @@
-#include "vulkan_context.hpp"
-#include "tools/log.hpp"
-#include "vk_error.hpp"
+#include <oxide/vulkan/vulkan_context.hpp>
+#include <oxide/tools/log.hpp>
+#include <oxide/vulkan/vk_error.hpp>
 
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace oxide {
 
 namespace {
 
+std::unordered_map<GLFWwindow *, VulkanContext *> window_contexts;
+
 bool hasStencilComponent(VkFormat format) noexcept {
 	return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
+}
+
+void framebufferResizeCallback(GLFWwindow *window, int, int) {
+	const auto context = window_contexts.find(window);
+	if (context != window_contexts.end()) {
+		context->second->notifyFramebufferResized();
+	}
 }
 
 } // namespace
@@ -23,14 +33,6 @@ bool hasStencilComponent(VkFormat format) noexcept {
 // record commands into its command buffer, submit them, and present the image.
 // Swapchain recreation replaces only resources that depend on the window size.
 // -----------------------------------------------------------------------------
-void framebufferResizeCallback(GLFWwindow *window, int, int) {
-	// The callback records the event; swapchain work stays on the render thread.
-	auto *context = static_cast<VulkanContext *>(glfwGetWindowUserPointer(window));
-	if (context != nullptr) {
-		context->notifyFramebufferResized();
-	}
-}
-
 VulkanContext::VulkanContext(VulkanDevice &device, Window *window) : device_(device), window_(window) {
 	// -------------------------------------------------------------------------
 	// Step 1: connect the window callback, create the surface, then build the
@@ -42,7 +44,7 @@ VulkanContext::VulkanContext(VulkanDevice &device, Window *window) : device_(dev
 
 	transparent_ = window_->transparent();
 
-	glfwSetWindowUserPointer(window_->handle(), this);
+	window_contexts[window_->handle()] = this;
 	glfwSetFramebufferSizeCallback(window_->handle(), framebufferResizeCallback);
 	try {
 		createSurface();
@@ -57,7 +59,7 @@ VulkanContext::VulkanContext(VulkanDevice &device, Window *window) : device_(dev
 			vkDestroySurfaceKHR(device_.instance(), surface_, nullptr);
 			surface_ = VK_NULL_HANDLE;
 		}
-		glfwSetWindowUserPointer(window_->handle(), nullptr);
+		window_contexts.erase(window_->handle());
 		glfwSetFramebufferSizeCallback(window_->handle(), nullptr);
 		throw;
 	}
@@ -69,10 +71,12 @@ VulkanContext::~VulkanContext() {
 	if (surface_ != VK_NULL_HANDLE) {
 		vkDestroySurfaceKHR(device_.instance(), surface_, nullptr);
 	}
-	if (window_ != nullptr && window_->handle() != nullptr &&
-	    glfwGetWindowUserPointer(window_->handle()) == this) {
-		glfwSetWindowUserPointer(window_->handle(), nullptr);
-		glfwSetFramebufferSizeCallback(window_->handle(), nullptr);
+	if (window_ != nullptr && window_->handle() != nullptr) {
+		const auto context = window_contexts.find(window_->handle());
+		if (context != window_contexts.end() && context->second == this) {
+			window_contexts.erase(context);
+			glfwSetFramebufferSizeCallback(window_->handle(), nullptr);
+		}
 	}
 }
 

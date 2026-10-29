@@ -1,5 +1,5 @@
-#include "texture_descriptor.hpp"
-#include "image_texture.hpp"
+#include <oxide/vulkan/texture_descriptor.hpp>
+#include <oxide/vulkan/image_texture.hpp>
 
 namespace oxide {
 

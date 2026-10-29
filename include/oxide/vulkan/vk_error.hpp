@@ -1,8 +1,8 @@
 #pragma once
 
-#include "tools/log.hpp"
-
 #include <vulkan/vulkan.h>
+
+#include <oxide/tools/log.hpp>
 
 #include <source_location>
 #include <stdexcept>

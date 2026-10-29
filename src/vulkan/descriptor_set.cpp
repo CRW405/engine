@@ -1,6 +1,6 @@
-#include "descriptor_set.hpp"
-#include "tools/log.hpp"
-#include "vk_error.hpp"
+#include <oxide/vulkan/descriptor_set.hpp>
+#include <oxide/tools/log.hpp>
+#include <oxide/vulkan/vk_error.hpp>
 
 #include <stdexcept>
 #include <vector>

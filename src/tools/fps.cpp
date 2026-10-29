@@ -1,4 +1,4 @@
-#include "fps.hpp"
+#include <oxide/tools/fps.hpp>
 
 #include <cstdint>
 #include <cstdio>

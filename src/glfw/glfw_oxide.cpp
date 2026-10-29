@@ -1,5 +1,5 @@
-#include "glfw_oxide.hpp"
-#include "tools/log.hpp"
+#include <oxide/glfw/glfw_oxide.hpp>
+#include <oxide/tools/log.hpp>
 
 #include <cstdio>
 #include <stdexcept>

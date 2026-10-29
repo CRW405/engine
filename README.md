@@ -27,7 +27,8 @@ manual control is still recommended. Oxide is just intended to accelerate setup
 and allow for more rapid experimentation and prototyping.
 
 Oxide is built as the `oxide` library from `src/glfw`, `src/tools`,
-and `src/vulkan`. Programs that use it live under `examples/`, where each
+and `src/vulkan`, with public headers under `include/oxide`. Programs that use
+it live under `examples/`, where each
 example is a standalone executable with its own `main.cpp` and `shaders/`
 directory:
 
@@ -93,7 +94,7 @@ arguments are still evaluated.
 ## Diagnostics
 
 All engine diagnostics go to stderr through the small logger in
-`src/tools/log.hpp`. Each line carries a severity, the source location that
+`include/oxide/tools/log.hpp`. Each line carries a severity, the source location that
 produced it, and a message:
 
 ```
@@ -130,9 +131,6 @@ has the full findings, severity levels, and suggested fixes.
 - [ ] Add a device-idle guard so resource destructors cannot race in-flight GPU work (C1)
 - [ ] Make `waitForValidFramebufferSize()` respect window close instead of blocking forever (C2)
 - [ ] Expose swapchain recreation so applications can rebuild pipelines after a format change (C3)
-- [ ] Include Vulkan directly in public headers instead of relying on `GLFW_INCLUDE_VULKAN` (C4)
-- [ ] Stop claiming the GLFW window user pointer in `VulkanContext` (C5)
-- [ ] Fix the examples' OpenGL-style projection (Y flip and zero-to-one depth) (C6)
 
 ### Rendering
 
@@ -158,9 +156,6 @@ has the full findings, severity levels, and suggested fixes.
 
 ### Packaging and quality
 
-- [ ] Declare `cglm` and `stb` dependencies in CMake
-- [ ] Add `install()`/exported package support for `find_package(oxide)`
-- [ ] Move public headers under a namespaced include root (`include/oxide/...`)
 - [ ] Add tests and a CI matrix for validation/logging on and off
 - [ ] Add a LICENSE and formatting/lint configuration
 
@@ -206,42 +201,49 @@ binaries can run from any working directory.
 ### File map
 
 - **Build and configuration** — `CMakeLists.txt` builds `oxide` as a static
-  library, publishes its include directories and dependencies, and defines the
-  `OXIDE_ENABLE_VALIDATION` and `OXIDE_ENABLE_LOGGING` options.
+  library, publishes its include directories and dependencies, defines the
+  `OXIDE_ENABLE_VALIDATION` and `OXIDE_ENABLE_LOGGING` options, and installs a
+  CMake package for `find_package(oxide)`.
   `examples/CMakeLists.txt` declares the example executables, compiles their
-  shaders, and adds the `run_<example>` targets. `src/oxide_config.hpp` holds
-  the compile-time defaults for those switches.
-- **GLFW layer** — `src/glfw/glfw_oxide.{hpp,cpp}` declares `WindowConfig`,
-  `MousePosition`, `GLFWContext`, and `Window`, and implements initialization,
-  window lifecycle, callback dispatch, input tracking, and the GLFW error
-  callback.
-- **Utilities** — `src/tools/log.{hpp,cpp}` provides log levels, `LogLine`,
-  located exception factories, `OXIDE_LOG_*` macros, and `NO_COLOR` handling.
-  `src/tools/fps.{hpp,cpp}` provides `FPSCounter`.
-- **Vulkan core** — `src/vulkan/vulkan_device.{hpp,cpp}` declares
-  `QueueFamilies` and `VulkanDevice` and implements instance, device, queue, and
-  memory-type setup. `src/vulkan/vulkan_context.{hpp,cpp}` declares `Frame`,
-  `MAX_FRAMES_IN_FLIGHT`, and `VulkanContext` and implements per-window
-  presentation, frame lifecycle, and swapchain recreation.
-  `src/vulkan/vk_error.hpp` maps `VkResult` values to names and provides
-  `checkVk`, `vkError`, and `logVkFailure`.
-- **Buffers** — `src/vulkan/buffer.{hpp,cpp}` declares `Buffer`,
-  `VertexBuffer`, `IndexBuffer`, `UniformBuffer`, and `Mesh`, and implements
-  allocation, mapping, upload/update, binding, and indexed draws.
-- **Descriptors** — `src/vulkan/descriptor_set.{hpp,cpp}` declares
-  `DescriptorBinding`, the `combinedImageSampler()` and `uniformBuffer()`
-  factories, and the `DescriptorSetLayout`, `DescriptorPool`, and
-  `DescriptorSet` wrappers. `ubo_descriptor.{hpp,cpp}` and
-  `uniform_buffer_ring.{hpp,cpp}` add the single and per-frame UBO helpers;
-  `texture_descriptor.{hpp,cpp}` owns the layout, pool, and set for an
+  shaders, and adds the `run_<example>` targets.
+  `include/oxide/oxide_config.hpp` holds the compile-time defaults for those
+  switches.
+- **GLFW layer** — `include/oxide/glfw/glfw_oxide.hpp` and
+  `src/glfw/glfw_oxide.cpp` declare `WindowConfig`, `MousePosition`,
+  `GLFWContext`, and `Window`, and implement initialization, window lifecycle,
+  callback dispatch, input tracking, and the GLFW error callback.
+- **Utilities** — `include/oxide/tools/log.hpp` and `src/tools/log.cpp`
+  provide log levels, `LogLine`, located exception factories, `OXIDE_LOG_*`
+  macros, and `NO_COLOR` handling. `include/oxide/tools/fps.hpp` and
+  `src/tools/fps.cpp` provide `FPSCounter`.
+- **Vulkan core** — `include/oxide/vulkan/vulkan_device.hpp` and
+  `src/vulkan/vulkan_device.cpp` declare `QueueFamilies` and `VulkanDevice` and
+  implement instance, device, queue, and memory-type setup.
+  `include/oxide/vulkan/vulkan_context.hpp` and
+  `src/vulkan/vulkan_context.cpp` declare `Frame`, `MAX_FRAMES_IN_FLIGHT`, and
+  `VulkanContext` and implement per-window presentation, frame lifecycle, and
+  swapchain recreation. `include/oxide/vulkan/vk_error.hpp` maps `VkResult`
+  values to names and provides `checkVk`, `vkError`, and `logVkFailure`.
+- **Buffers** — `include/oxide/vulkan/buffer.hpp` and `src/vulkan/buffer.cpp`
+  declare `Buffer`, `VertexBuffer`, `IndexBuffer`, `UniformBuffer`, and
+  `Mesh`, and implement allocation, mapping, upload/update, binding, and
+  indexed draws.
+- **Descriptors** — `include/oxide/vulkan/descriptor_set.hpp` and
+  `src/vulkan/descriptor_set.cpp` declare `DescriptorBinding`, the
+  `combinedImageSampler()` and `uniformBuffer()` factories, and the
+  `DescriptorSetLayout`, `DescriptorPool`, and `DescriptorSet` wrappers.
+  `ubo_descriptor` and `uniform_buffer_ring` add the single and per-frame UBO
+  helpers; `texture_descriptor` owns the layout, pool, and set for an
   `ImageTexture`.
-- **Textures** — `src/vulkan/image_texture.{hpp,cpp}` owns a `VkImage`, memory,
-  view, and sampler. It loads with stb_image, uploads through a staging buffer,
-  transitions layout, and cleans up partial resources on failure.
-- **Pipelines** — `src/vulkan/pipeline_layout.{hpp,cpp}` declares
-  `PushConstant`, `pushConstant<T>()`, `pushConstantRange<T>()`, and
-  `PipelineLayout`, including descriptor-set binding.
-  `src/vulkan/render_pipeline.{hpp,cpp}` declares `VertexInputDescription`,
+- **Textures** — `include/oxide/vulkan/image_texture.hpp` and
+  `src/vulkan/image_texture.cpp` own a `VkImage`, memory, view, and sampler. It
+  loads with stb_image, uploads through a staging buffer, transitions layout,
+  and cleans up partial resources on failure.
+- **Pipelines** — `include/oxide/vulkan/pipeline_layout.hpp` and
+  `src/vulkan/pipeline_layout.cpp` declare `PushConstant`,
+  `pushConstant<T>()`, `pushConstantRange<T>()`, and `PipelineLayout`, including
+  descriptor-set binding. `include/oxide/vulkan/render_pipeline.hpp` and
+  `src/vulkan/render_pipeline.cpp` declare `VertexInputDescription`,
   `PipelineConfigInfo`, and `Pipeline`, with pointer repair for copied configs,
   `defaultPipelineConfigInfo()`, SPIR-V loading, and pipeline creation.
 - **Assets and examples** — `assets/smiley_0.png` is shared by the image and

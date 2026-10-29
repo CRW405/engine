@@ -1,7 +1,10 @@
-#include "vulkan_device.hpp"
-#include "oxide_config.hpp"
-#include "tools/log.hpp"
-#include "vk_error.hpp"
+#include <oxide/vulkan/vulkan_device.hpp>
+#include <oxide/oxide_config.hpp>
+#include <oxide/tools/log.hpp>
+#include <oxide/vulkan/vk_error.hpp>
+
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 
 #include <algorithm>
 #include <cstring>

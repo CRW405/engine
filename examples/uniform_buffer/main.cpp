@@ -1,12 +1,13 @@
-#include "glfw/glfw_oxide.hpp"
-#include "tools/log.hpp"
-#include "vulkan/buffer.hpp"
-#include "vulkan/pipeline_layout.hpp"
-#include "vulkan/render_pipeline.hpp"
-#include "vulkan/uniform_buffer_ring.hpp"
-#include "vulkan/vulkan_context.hpp"
-#include "vulkan/vulkan_device.hpp"
+#include <oxide/glfw/glfw_oxide.hpp>
+#include <oxide/tools/log.hpp>
+#include <oxide/vulkan/buffer.hpp>
+#include <oxide/vulkan/pipeline_layout.hpp>
+#include <oxide/vulkan/render_pipeline.hpp>
+#include <oxide/vulkan/uniform_buffer_ring.hpp>
+#include <oxide/vulkan/vulkan_context.hpp>
+#include <oxide/vulkan/vulkan_device.hpp>
 
+#define CGLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <cglm/cglm.h>
 
 #include <cstdint>
@@ -99,6 +100,7 @@ int main() {
 			const float aspect_ratio = static_cast<float>(vulkan.extent().width) /
 			                           static_cast<float>(vulkan.extent().height);
 			glm_perspective(glm_rad(45.0f), aspect_ratio, 0.1f, 100.0f, ubo.projection);
+			ubo.projection[1][1] *= -1.0f;
 
 			uniform_buffers.update(frame.frameIndex, ubo);
 

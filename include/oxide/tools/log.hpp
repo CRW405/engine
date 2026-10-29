@@ -1,6 +1,6 @@
 #pragma once
 
-#include "oxide_config.hpp"
+#include <oxide/oxide_config.hpp>
 
 #include <source_location>
 #include <sstream>

@@ -1,14 +1,12 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#include <vulkan/vulkan.h>
 
 #include <cstdint>
-#include <cstring>
 #include <string>
 #include <vector>
 
-#include "glfw/glfw_oxide.hpp"
+struct GLFWwindow;
 
 namespace oxide {
 

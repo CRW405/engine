@@ -1,16 +1,15 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#include <vulkan/vulkan.h>
 
 #include <cstdint>
 #include <memory>
 #include <type_traits>
 #include <vector>
 
-#include "buffer.hpp"
-#include "descriptor_set.hpp"
-#include "vulkan_device.hpp"
+#include <oxide/vulkan/buffer.hpp>
+#include <oxide/vulkan/descriptor_set.hpp>
+#include <oxide/vulkan/vulkan_device.hpp>
 
 namespace oxide {
 

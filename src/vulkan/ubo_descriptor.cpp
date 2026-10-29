@@ -1,5 +1,5 @@
-#include "ubo_descriptor.hpp"
-#include "buffer.hpp"
+#include <oxide/vulkan/ubo_descriptor.hpp>
+#include <oxide/vulkan/buffer.hpp>
 
 namespace oxide {
 

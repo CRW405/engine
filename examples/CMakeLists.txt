@@ -6,6 +6,8 @@ set(OXIDE_EXAMPLES
     showcase
 )
 
+find_package(cglm CONFIG REQUIRED)
+
 find_program(GLSLC_EXECUTABLE glslc)
 find_program(GLSLANG_VALIDATOR_EXECUTABLE glslangValidator)
 
@@ -54,7 +56,7 @@ foreach(EXAMPLE IN LISTS OXIDE_EXAMPLES)
 
     add_executable(${EXAMPLE} "${EXAMPLE_SOURCE_DIR}/main.cpp")
     add_dependencies(${EXAMPLE} ${EXAMPLE}_shaders)
-    target_link_libraries(${EXAMPLE} PRIVATE oxide)
+    target_link_libraries(${EXAMPLE} PRIVATE oxide cglm::cglm)
     target_compile_definitions(${EXAMPLE} PRIVATE
         OXIDE_SHADER_DIR="${EXAMPLE_SHADER_DIR}"
         OXIDE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets"

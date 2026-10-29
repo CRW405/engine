@@ -1,12 +1,12 @@
-#include "glfw/glfw_oxide.hpp"
-#include "tools/log.hpp"
-#include "vulkan/buffer.hpp"
-#include "vulkan/image_texture.hpp"
-#include "vulkan/pipeline_layout.hpp"
-#include "vulkan/render_pipeline.hpp"
-#include "vulkan/texture_descriptor.hpp"
-#include "vulkan/vulkan_context.hpp"
-#include "vulkan/vulkan_device.hpp"
+#include <oxide/glfw/glfw_oxide.hpp>
+#include <oxide/tools/log.hpp>
+#include <oxide/vulkan/buffer.hpp>
+#include <oxide/vulkan/image_texture.hpp>
+#include <oxide/vulkan/pipeline_layout.hpp>
+#include <oxide/vulkan/render_pipeline.hpp>
+#include <oxide/vulkan/texture_descriptor.hpp>
+#include <oxide/vulkan/vulkan_context.hpp>
+#include <oxide/vulkan/vulkan_device.hpp>
 
 #include <cstdint>
 #include <cstdio>

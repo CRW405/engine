@@ -1,10 +1,10 @@
 #pragma once
 
-#include "vulkan/vulkan_device.hpp"
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#include <vulkan/vulkan.h>
 
 #include <string>
+
+#include <oxide/vulkan/vulkan_device.hpp>
 
 namespace oxide {
 

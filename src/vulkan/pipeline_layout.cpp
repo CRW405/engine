@@ -1,6 +1,6 @@
-#include "pipeline_layout.hpp"
-#include "tools/log.hpp"
-#include "vk_error.hpp"
+#include <oxide/vulkan/pipeline_layout.hpp>
+#include <oxide/tools/log.hpp>
+#include <oxide/vulkan/vk_error.hpp>
 
 #include <stdexcept>
 

@@ -69,47 +69,6 @@ between monitors or toggling HDR.
 `onSwapchainRecreated` callback, and document that pipelines must be recreated
 when the render pass changes.
 
-### C4 — Public headers depend on `GLFW_INCLUDE_VULKAN`
-
-**Severity:** High
-**Where:** all headers under `src/vulkan/`
-
-The headers rely on `#define GLFW_INCLUDE_VULKAN` before including
-`GLFW/glfw3.h`. If a consumer includes `<GLFW/glfw3.h>` first (a common thing to
-do), GLFW's include guard prevents the Vulkan header from being pulled in, and
-the Oxide headers fail to compile because `VkInstance`, `VkBuffer`, etc. are
-undefined. The macro also leaks into every translation unit that includes an
-Oxide header.
-
-**Fix:** include `<vulkan/vulkan.h>` explicitly in public headers, and define
-`GLFW_INCLUDE_NONE` before including GLFW (or forward-declare `GLFWwindow`).
-
-### C5 — `VulkanContext` claims the GLFW window user pointer
-
-**Severity:** High
-**Where:** `src/vulkan/vulkan_context.cpp`
-
-The constructor calls `glfwSetWindowUserPointer(window, this)` for the resize
-callback. Applications using the standard GLFW user-pointer pattern will have
-their data overwritten, or their callback will interpret a `VulkanContext*` as
-their own type. `Window` already uses a static map keyed by `GLFWwindow*`; the
-context should use the same approach or store the context on `Window`.
-
-### C6 — Examples use an OpenGL-style projection
-
-**Severity:** High
-**Where:** `examples/showcase/main.cpp`, `examples/uniform_buffer/main.cpp`
-
-cglm defaults to a right-handed, negative-one-to-one depth projection
-(`CGLM_CLIP_CONTROL_RH_NO`). Vulkan NDC is Y-down with depth in `[0, 1]`. No
-example flips Y: the symmetric quads and negated texture coordinates hide it,
-but asymmetric 3D geometry renders upside down, and the depth buffer only uses
-half of its range.
-
-**Fix:** define `CGLM_FORCE_DEPTH_ZERO_TO_ONE` and either negate
-`projection[1][1]` or use a negative viewport height (Vulkan 1.1 /
-`VK_KHR_maintenance1`).
-
 ### C7 — `PipelineConfigInfo` has two sources of truth
 
 **Severity:** Medium
@@ -163,7 +122,7 @@ pipelines.
 ### C11 — `Mesh` does not validate indices
 
 **Severity:** Medium
-**Where:** `src/vulkan/buffer.hpp`, `Mesh`
+**Where:** `include/oxide/vulkan/buffer.hpp`, `Mesh`
 
 Out-of-range indices are passed straight to `vkCmdDrawIndexed`. Robust buffer
 access may clamp them, but it is not guaranteed, and the failure is silent.
@@ -174,7 +133,7 @@ document the requirement.
 ### C12 — `checkVk` throws on `VK_INCOMPLETE`
 
 **Severity:** Low
-**Where:** `src/vulkan/vk_error.hpp` and the enumeration helpers
+**Where:** `include/oxide/vulkan/vk_error.hpp` and the enumeration helpers
 
 Enumerating instance extensions, layers, device extensions, physical devices,
 surface formats, and present modes uses the count-then-fill pattern. If the
@@ -253,19 +212,7 @@ the result is `VK_INCOMPLETE`.
 
 ### Packaging and infrastructure
 
-- **P1 — Not consumable as a package (High).** No `install()` rules, exported
-  target, `oxideConfig.cmake`, or pkg-config file, so `find_package(oxide)`
-  cannot work.
-- **P2 — Public include layout.** Headers live under `src/` and are included as
-  `"vulkan/buffer.hpp"` or `"tools/log.hpp"`. The roots are generic enough to
-  collide with other projects. Prefer `include/oxide/...` plus
-  `#include <oxide/...>`.
-- **P3 — Undeclared dependencies (High).** Three examples include
-  `<cglm/cglm.h>`, but CMake never finds or links cglm. stb is searched only in
-  `/usr/include/stb`.
-- **P4 — Missing usage requirements.** `CMAKE_CXX_STANDARD` is set globally
-  rather than with `target_compile_features(oxide PUBLIC cxx_std_20)`, and the
-  target is forced to static. Add the feature requirement and consider
+- **P4 — Missing usage requirements.** The target is forced to static. Consider
   `BUILD_SHARED_LIBS` support with an export macro.
 - **P5 — No tests or CI (High).** There are no unit tests for the nontrivial
   parts (`PipelineConfigInfo` copy/move, buffer bounds, log formatting) and no
@@ -293,10 +240,9 @@ the result is `VK_INCOMPLETE`.
   public symbol outside `oxide`. `sample_` vs `sampler_`, and example locals
   mix `pipelineConfig` and `pipeline_Config`.
 - **A4 — External linkage in translation units.** Helpers such as
-  `framebufferResizeCallback`, `debugCallback`, `transitionImageLayout`, and
-  `beginSingleTimeCommands` are non-static free functions in namespace `oxide`.
-  They should be in an anonymous namespace to avoid symbol collisions in a
-  static library.
+  `debugCallback`, `transitionImageLayout`, and `beginSingleTimeCommands` are
+  non-static free functions in namespace `oxide`. They should be in an
+  anonymous namespace to avoid symbol collisions in a static library.
 - **A5 — `WindowConfig` is a positional aggregate.**
   `Window({ 500, 500, "Oxide", true, true, false })` is unreadable and easy to
   mis-order. Use designated initializers or a builder.
@@ -308,10 +254,6 @@ the result is `VK_INCOMPLETE`.
 - **A8 — `Buffer::bind()` is a vertex-buffer operation on the base class.**
   `UniformBuffer` and staging buffers inherit it, so an invalid bind compiles.
   Move it to `VertexBuffer`.
-- **A9 — README file map inaccuracy.** The file map attributes `Frame` and
-  `MAX_FRAMES_IN_FLIGHT` to `vulkan_context.cpp` when they are declared in the
-  header.
-
 ---
 
 ## Nits
@@ -346,11 +288,11 @@ the result is `VK_INCOMPLETE`.
 
 ## Suggested order
 
-1. **Correctness and lifetime:** C1, C2, C3, C4, C5.
-2. **Rendering foundation:** R2 (MSAA/MRT), R3 (offscreen), and C6.
+1. **Correctness and lifetime:** C1, C2, C3.
+2. **Rendering foundation:** R2 (MSAA/MRT) and R3 (offscreen).
 3. **Memory:** M1 and M2 before the resource API is used more widely.
 4. **Robustness:** C7, C8, C9, C11.
-5. **Consumability:** P3, P1, P5, P6.
+5. **Consumability:** P5, P6.
 6. **Everything else** in the order that matches the next milestone.
 
 ## Verification notes

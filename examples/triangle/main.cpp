@@ -1,11 +1,11 @@
-#include "glfw/glfw_oxide.hpp"
-#include "tools/fps.hpp"
-#include "tools/log.hpp"
-#include "vulkan/buffer.hpp"
-#include "vulkan/pipeline_layout.hpp"
-#include "vulkan/render_pipeline.hpp"
-#include "vulkan/vulkan_context.hpp"
-#include "vulkan/vulkan_device.hpp"
+#include <oxide/glfw/glfw_oxide.hpp>
+#include <oxide/tools/fps.hpp>
+#include <oxide/tools/log.hpp>
+#include <oxide/vulkan/buffer.hpp>
+#include <oxide/vulkan/pipeline_layout.hpp>
+#include <oxide/vulkan/render_pipeline.hpp>
+#include <oxide/vulkan/vulkan_context.hpp>
+#include <oxide/vulkan/vulkan_device.hpp>
 
 #include <cglm/cglm.h>
 

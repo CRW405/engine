@@ -1,6 +1,6 @@
-#include "buffer.hpp"
-#include "tools/log.hpp"
-#include "vk_error.hpp"
+#include <oxide/vulkan/buffer.hpp>
+#include <oxide/tools/log.hpp>
+#include <oxide/vulkan/vk_error.hpp>
 
 #include <cstring>
 #include <stdexcept>

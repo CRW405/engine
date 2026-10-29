@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.25)
 
 project(oxide VERSION 0.1.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -13,14 +16,13 @@ option(OXIDE_ENABLE_LOGGING "Enable Oxide diagnostic logging" ON)
 find_package(Vulkan REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 
-find_path(STB_INCLUDE_DIR stb_image.h
-    PATHS /usr/include/stb
+find_path(STB_INCLUDE_DIR NAMES stb_image.h
+    PATHS /usr/include/stb /usr/local/include/stb
+    PATH_SUFFIXES stb
 )
 if(NOT STB_INCLUDE_DIR)
     message(FATAL_ERROR "stb headers not found!")
 endif()
-add_library(stb INTERFACE)
-target_include_directories(stb INTERFACE ${STB_INCLUDE_DIR})
 
 function(oxide_enable_warnings target)
     if(MSVC)
@@ -39,11 +41,12 @@ add_library(oxide STATIC ${OXIDE_SOURCES})
 add_library(oxide::oxide ALIAS oxide)
 
 target_include_directories(oxide PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/glfw"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/vulkan"
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(oxide PUBLIC Vulkan::Vulkan glfw stb)
+target_include_directories(oxide PRIVATE ${STB_INCLUDE_DIR})
+target_link_libraries(oxide PUBLIC Vulkan::Vulkan glfw)
+target_compile_features(oxide PUBLIC cxx_std_20)
 target_compile_definitions(oxide PUBLIC
     OXIDE_ENABLE_VALIDATION=$<BOOL:${OXIDE_ENABLE_VALIDATION}>
     OXIDE_ENABLE_LOGGING=$<BOOL:${OXIDE_ENABLE_LOGGING}>
@@ -53,6 +56,35 @@ oxide_enable_warnings(oxide)
 
 message(STATUS "Oxide validation layers: ${OXIDE_ENABLE_VALIDATION}")
 message(STATUS "Oxide diagnostic logging: ${OXIDE_ENABLE_LOGGING}")
+
+install(TARGETS oxide EXPORT oxideTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT oxideTargets
+    FILE oxideTargets.cmake
+    NAMESPACE oxide::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/oxide
+)
+
+configure_package_config_file(
+    cmake/oxideConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/oxideConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/oxide
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/oxideConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/oxideConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/oxideConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/oxide
+)
 
 option(OXIDE_BUILD_EXAMPLES "Build the example programs" ON)
 if(OXIDE_BUILD_EXAMPLES)
