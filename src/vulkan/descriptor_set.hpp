@@ -8,7 +8,7 @@
 
 #include "vulkan_device.hpp"
 
-namespace engine {
+namespace oxide {
 
 // ============================================================================
 // Descriptor binding defaults
@@ -77,7 +77,7 @@ class DescriptorSetLayout {
 // Descriptor pool
 //
 // Owns the pool that backs one or more descriptor sets. The default maxSets of
-// one matches the single-set wrappers in this engine.
+// one matches the single-set wrappers in Oxide.
 // ============================================================================
 class DescriptorPool {
   public:
@@ -133,4 +133,4 @@ class DescriptorSet {
 	VkDescriptorSet       set_    = VK_NULL_HANDLE;
 };
 
-} // namespace engine
+} // namespace oxide

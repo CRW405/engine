@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(engine VERSION 0.1.0 LANGUAGES CXX)
+project(oxide VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Development defaults stay on. Disable these for lean release builds.
+option(OXIDE_ENABLE_VALIDATION "Enable Vulkan validation layers" ON)
+option(OXIDE_ENABLE_LOGGING "Enable Oxide diagnostic logging" ON)
 
 find_package(Vulkan REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
@@ -18,65 +22,39 @@ endif()
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${STB_INCLUDE_DIR})
 
-set(SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders")
-set(SHADER_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
-find_program(GLSLC_EXECUTABLE glslc)
-find_program(GLSLANG_VALIDATOR_EXECUTABLE glslangValidator)
+function(oxide_enable_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror -DGLFW_USE_WAYLAND=ON)
+    endif()
+endfunction()
 
-if(GLSLC_EXECUTABLE)
-    set(SHADER_COMPILER "${GLSLC_EXECUTABLE}")
-    set(SHADER_COMPILER_ARGS "")
-elseif(GLSLANG_VALIDATOR_EXECUTABLE)
-    set(SHADER_COMPILER "${GLSLANG_VALIDATOR_EXECUTABLE}")
-    set(SHADER_COMPILER_ARGS "-V")
-else()
-    message(FATAL_ERROR "Neither glslc nor glslangValidator was found")
-endif()
+# Oxide itself is a library that example programs (and other projects)
+# can link against. Every source file under src/ is part of it; applications
+# live in examples/.
+file(GLOB_RECURSE OXIDE_SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 
-file(GLOB SHADER_SOURCES CONFIGURE_DEPENDS
-    "${SHADER_SOURCE_DIR}/*.vert"
-    "${SHADER_SOURCE_DIR}/*.frag"
-    "${SHADER_SOURCE_DIR}/*.comp"
-)
+add_library(oxide STATIC ${OXIDE_SOURCES})
+add_library(oxide::oxide ALIAS oxide)
 
-set(SHADER_OUTPUTS)
-foreach(SHADER_SOURCE IN LISTS SHADER_SOURCES)
-    get_filename_component(SHADER_NAME "${SHADER_SOURCE}" NAME)
-    set(SHADER_OUTPUT "${SHADER_BINARY_DIR}/${SHADER_NAME}.spv")
-    add_custom_command(
-        OUTPUT "${SHADER_OUTPUT}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_BINARY_DIR}"
-        COMMAND "${SHADER_COMPILER}" ${SHADER_COMPILER_ARGS}
-                "${SHADER_SOURCE}" -o "${SHADER_OUTPUT}"
-        DEPENDS "${SHADER_SOURCE}"
-        COMMENT "Compiling ${SHADER_NAME}"
-        VERBATIM
-    )
-    list(APPEND SHADER_OUTPUTS "${SHADER_OUTPUT}")
-endforeach()
-
-add_custom_target(shaders DEPENDS ${SHADER_OUTPUTS})
-
-file(GLOB_RECURSE ENGINE_SOURCES "src/*.cpp" "src/**/*.cpp")
-add_executable(engine ${ENGINE_SOURCES})
-add_dependencies(engine shaders)
-
-target_include_directories(engine PRIVATE
+target_include_directories(oxide PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/glfw"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/vulkan"
 )
-target_link_libraries(engine PRIVATE Vulkan::Vulkan glfw stb)
-
-if(MSVC)
-    target_compile_options(engine PRIVATE /W4)
-else()
-    target_compile_options(engine PRIVATE -Wall -Wextra -Wpedantic -Werror -DGLFW_USE_WAYLAND=ON)
-endif()
-
-add_custom_target(run
-    COMMAND engine
-    DEPENDS engine
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    COMMENT "Running engine"
+target_link_libraries(oxide PUBLIC Vulkan::Vulkan glfw stb)
+target_compile_definitions(oxide PUBLIC
+    OXIDE_ENABLE_VALIDATION=$<BOOL:${OXIDE_ENABLE_VALIDATION}>
+    OXIDE_ENABLE_LOGGING=$<BOOL:${OXIDE_ENABLE_LOGGING}>
 )
+
+oxide_enable_warnings(oxide)
+
+message(STATUS "Oxide validation layers: ${OXIDE_ENABLE_VALIDATION}")
+message(STATUS "Oxide diagnostic logging: ${OXIDE_ENABLE_LOGGING}")
+
+option(OXIDE_BUILD_EXAMPLES "Build the example programs" ON)
+if(OXIDE_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()

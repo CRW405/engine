@@ -1,9 +1,12 @@
 #include "render_pipeline.hpp"
+#include "tools/log.hpp"
+#include "vk_error.hpp"
+
 #include <fstream>
 #include <stdexcept>
 #include <utility>
 
-namespace engine {
+namespace oxide {
 
 // -----------------------------------------------------------------------------
 // Vertex input and graphics pipeline setup
@@ -164,16 +167,15 @@ Pipeline::Pipeline(
 	auto fragCode = readFile(fragFilepath);
 
 	try {
-		createShaderModule(vertCode, &vertShaderModule_);
-		createShaderModule(fragCode, &fragShaderModule_);
+		createShaderModule(vertCode, &vertShaderModule_, vertFilepath);
+		createShaderModule(fragCode, &fragShaderModule_, fragFilepath);
 
 		if (configInfo.pipelineLayout == VK_NULL_HANDLE) {
 			// Use an empty layout until descriptors or push constants are needed.
 			VkPipelineLayoutCreateInfo layoutInfo{};
 			layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-			if (vkCreatePipelineLayout(device_.device(), &layoutInfo, nullptr, &layout_) != VK_SUCCESS) {
-				throw std::runtime_error("failed to create pipeline layout");
-			}
+			checkVk(vkCreatePipelineLayout(device_.device(), &layoutInfo, nullptr, &layout_),
+			        "create default pipeline layout");
 			owns_layout_ = true;
 		} else {
 			layout_ = configInfo.pipelineLayout;
@@ -214,9 +216,8 @@ Pipeline::Pipeline(
 		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 		pipelineInfo.basePipelineIndex  = -1;
 
-		if (vkCreateGraphicsPipelines(device_.device(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline_) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create graphics pipeline");
-		}
+		checkVk(vkCreateGraphicsPipelines(device_.device(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline_),
+		        "create graphics pipeline");
 	} catch (...) {
 		if (fragShaderModule_ != VK_NULL_HANDLE) {
 			vkDestroyShaderModule(device_.device(), fragShaderModule_, nullptr);
@@ -300,29 +301,42 @@ std::vector<char> Pipeline::readFile(const std::string &filepath) {
 	std::ifstream file(filepath, std::ios::ate | std::ios::binary);
 
 	if (!file.is_open()) {
-		throw std::runtime_error("failed to open file: " + filepath);
+		throw runtimeError("failed to open shader file: " + filepath);
 	}
 
-	size_t            fileSize = static_cast<size_t>(file.tellg());
-	std::vector<char> buffer(fileSize);
+	const std::streampos end = file.tellg();
+	if (end == std::streampos(-1)) {
+		throw runtimeError("failed to determine shader file size: " + filepath);
+	}
+	const auto        fileSize = static_cast<size_t>(end);
+	if (fileSize == 0) {
+		throw runtimeError("shader file is empty: " + filepath);
+	}
+	if (fileSize % 4 != 0) {
+		throw runtimeError("shader file size is not a multiple of 4 bytes: " + filepath);
+	}
 
+	std::vector<char> buffer(fileSize);
 	file.seekg(0);
-	file.read(buffer.data(), fileSize);
-	file.close();
+	if (!file.read(buffer.data(), static_cast<std::streamsize>(fileSize))) {
+		throw runtimeError("failed to read shader file: " + filepath);
+	}
 
 	return buffer;
 }
 
-void Pipeline::createShaderModule(const std::vector<char> &code, VkShaderModule *shaderModule) {
+void Pipeline::createShaderModule(
+    const std::vector<char> &code,
+    VkShaderModule          *shaderModule,
+    const std::string       &filepath) {
 	// Vulkan consumes SPIR-V as 32-bit words even though files are byte streams.
 	VkShaderModuleCreateInfo createInfo{};
 	createInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	createInfo.codeSize = code.size();
 	createInfo.pCode    = reinterpret_cast<const uint32_t *>(code.data());
 
-	if (vkCreateShaderModule(device_.device(), &createInfo, nullptr, shaderModule) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create shader module");
-	}
+	checkVk(vkCreateShaderModule(device_.device(), &createInfo, nullptr, shaderModule),
+	        "create shader module for " + filepath);
 }
 
 PipelineConfigInfo Pipeline::defaultPipelineConfigInfo() {
@@ -385,4 +399,4 @@ PipelineConfigInfo Pipeline::defaultPipelineConfigInfo() {
 	return configInfo;
 }
 
-} // namespace engine
+} // namespace oxide

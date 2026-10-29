@@ -7,7 +7,7 @@
 
 #include "descriptor_set.hpp"
 
-namespace engine {
+namespace oxide {
 
 class ImageTexture;
 
@@ -57,4 +57,4 @@ class TextureDescriptorSet {
 	DescriptorSet       set_;
 };
 
-} // namespace engine
+} // namespace oxide

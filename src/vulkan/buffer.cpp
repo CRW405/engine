@@ -1,9 +1,11 @@
 #include "buffer.hpp"
+#include "tools/log.hpp"
+#include "vk_error.hpp"
 
 #include <cstring>
 #include <stdexcept>
 
-namespace engine {
+namespace oxide {
 
 // -----------------------------------------------------------------------------
 // Buffer lifetime and data upload
@@ -11,7 +13,7 @@ namespace engine {
 Buffer::Buffer(VulkanDevice &device, const void *data, VkDeviceSize size, VkBufferUsageFlags usage)
     : device_(device), size_(size) {
 	if (data == nullptr || size_ == 0) {
-		throw std::invalid_argument("buffer requires non-empty data");
+		throw invalidArgument("buffer requires non-empty data");
 	}
 
 	VkBufferCreateInfo bufferInfo{};
@@ -20,41 +22,51 @@ Buffer::Buffer(VulkanDevice &device, const void *data, VkDeviceSize size, VkBuff
 	bufferInfo.usage       = usage;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	if (vkCreateBuffer(device_.device(), &bufferInfo, nullptr, &buffer_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create buffer");
-	}
+	checkVk(vkCreateBuffer(device_.device(), &bufferInfo, nullptr, &buffer_), "create buffer");
 
 	VkMemoryRequirements memoryRequirements;
 	vkGetBufferMemoryRequirements(device_.device(), buffer_, &memoryRequirements);
 
+	std::uint32_t memory_type = 0;
+	try {
+		memory_type = device_.findMemoryType(
+		    memoryRequirements.memoryTypeBits,
+		    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	} catch (...) {
+		vkDestroyBuffer(device_.device(), buffer_, nullptr);
+		buffer_ = VK_NULL_HANDLE;
+		throw;
+	}
+
 	VkMemoryAllocateInfo allocation{};
 	allocation.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocation.allocationSize  = memoryRequirements.size;
-	allocation.memoryTypeIndex = device_.findMemoryType(
-	    memoryRequirements.memoryTypeBits,
-	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	allocation.memoryTypeIndex = memory_type;
 
-	if (vkAllocateMemory(device_.device(), &allocation, nullptr, &memory_) != VK_SUCCESS) {
+	const VkResult allocate_result = vkAllocateMemory(device_.device(), &allocation, nullptr, &memory_);
+	if (allocate_result != VK_SUCCESS) {
 		vkDestroyBuffer(device_.device(), buffer_, nullptr);
 		buffer_ = VK_NULL_HANDLE;
-		throw std::runtime_error("failed to allocate buffer memory");
+		throw vkError("allocate buffer memory", allocate_result);
 	}
 
-	if (vkBindBufferMemory(device_.device(), buffer_, memory_, 0) != VK_SUCCESS) {
+	const VkResult bind_result = vkBindBufferMemory(device_.device(), buffer_, memory_, 0);
+	if (bind_result != VK_SUCCESS) {
 		vkFreeMemory(device_.device(), memory_, nullptr);
 		vkDestroyBuffer(device_.device(), buffer_, nullptr);
 		memory_ = VK_NULL_HANDLE;
 		buffer_ = VK_NULL_HANDLE;
-		throw std::runtime_error("failed to bind buffer memory");
+		throw vkError("bind buffer memory", bind_result);
 	}
 
-	void *mappedData = nullptr;
-	if (vkMapMemory(device_.device(), memory_, 0, size_, 0, &mappedData) != VK_SUCCESS) {
+	void          *mappedData = nullptr;
+	const VkResult map_result = vkMapMemory(device_.device(), memory_, 0, size_, 0, &mappedData);
+	if (map_result != VK_SUCCESS) {
 		vkFreeMemory(device_.device(), memory_, nullptr);
 		vkDestroyBuffer(device_.device(), buffer_, nullptr);
 		memory_ = VK_NULL_HANDLE;
 		buffer_ = VK_NULL_HANDLE;
-		throw std::runtime_error("failed to map buffer memory");
+		throw vkError("map buffer memory", map_result);
 	}
 	std::memcpy(mappedData, data, static_cast<std::size_t>(size_));
 	vkUnmapMemory(device_.device(), memory_);
@@ -80,13 +92,14 @@ void Buffer::bind(VkCommandBuffer commandBuffer, std::uint32_t binding) const {
 }
 
 void Buffer::update(const void *data, VkDeviceSize size, VkDeviceSize offset) {
-	if (data == nullptr || size == 0 || offset + size > size_) {
-		throw std::invalid_argument("buffer update out of bounds");
+	if (data == nullptr || size == 0 || offset > size_ || size > size_ - offset) {
+		throw invalidArgument("buffer update range is out of bounds");
 	}
 
-	void *mappedData = nullptr;
-	if (vkMapMemory(device_.device(), memory_, offset, size, 0, &mappedData) != VK_SUCCESS) {
-		throw std::runtime_error("failed to map buffer memory for update");
+	void          *mappedData = nullptr;
+	const VkResult map_result = vkMapMemory(device_.device(), memory_, offset, size, 0, &mappedData);
+	if (map_result != VK_SUCCESS) {
+		throw vkError("map buffer memory for update", map_result);
 	}
 	std::memcpy(mappedData, data, static_cast<std::size_t>(size));
 	vkUnmapMemory(device_.device(), memory_);
@@ -111,4 +124,4 @@ void Mesh::draw(VkCommandBuffer commandBuffer) const {
 	vkCmdDrawIndexed(commandBuffer, index_count_, 1, 0, 0, 0);
 }
 
-} // namespace engine
+} // namespace oxide

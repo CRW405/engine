@@ -1,7 +1,7 @@
 #include "ubo_descriptor.hpp"
 #include "buffer.hpp"
 
-namespace engine {
+namespace oxide {
 
 // -----------------------------------------------------------------------------
 // Uniform buffer descriptor lifetime and update
@@ -35,4 +35,4 @@ UBODescriptorSet::UBODescriptorSet(
 	vkUpdateDescriptorSets(device.device(), 1, &descriptorWrite, 0, nullptr);
 }
 
-} // namespace engine
+} // namespace oxide

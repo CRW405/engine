@@ -1,8 +1,10 @@
 #include "pipeline_layout.hpp"
+#include "tools/log.hpp"
+#include "vk_error.hpp"
 
 #include <stdexcept>
 
-namespace engine {
+namespace oxide {
 
 // -----------------------------------------------------------------------------
 // Pipeline layout lifetime
@@ -14,6 +16,13 @@ PipelineLayout::PipelineLayout(
     const VkPushConstantRange *pushConstantRanges,
     std::uint32_t pushConstantRangeCount)
     : device_(device) {
+	if (descriptorSetLayoutCount > 0 && descriptorSetLayouts == nullptr) {
+		throw invalidArgument("pipeline layout requires descriptor set layouts when the count is non-zero");
+	}
+	if (pushConstantRangeCount > 0 && pushConstantRanges == nullptr) {
+		throw invalidArgument("pipeline layout requires push constant ranges when the count is non-zero");
+	}
+
 	VkPipelineLayoutCreateInfo createInfo{};
 	createInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	createInfo.setLayoutCount         = descriptorSetLayoutCount;
@@ -21,9 +30,8 @@ PipelineLayout::PipelineLayout(
 	createInfo.pushConstantRangeCount = pushConstantRangeCount;
 	createInfo.pPushConstantRanges    = pushConstantRanges;
 
-	if (vkCreatePipelineLayout(device_.device(), &createInfo, nullptr, &layout_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create pipeline layout");
-	}
+	checkVk(vkCreatePipelineLayout(device_.device(), &createInfo, nullptr, &layout_),
+	        "create pipeline layout");
 }
 
 PipelineLayout::PipelineLayout(
@@ -54,7 +62,7 @@ void PipelineLayout::bindDescriptorSet(
     VkDescriptorSet descriptorSet,
     std::uint32_t   firstSet) const {
 	// -------------------------------------------------------------------------
-	// Bind one set through this layout. The engine does not use dynamic offsets;
+	// Bind one set through this layout. Oxide does not use dynamic offsets;
 	// call vkCmdBindDescriptorSets directly when a shader needs them.
 	// -------------------------------------------------------------------------
 	vkCmdBindDescriptorSets(commandBuffer,

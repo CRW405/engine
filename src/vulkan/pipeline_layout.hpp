@@ -9,7 +9,7 @@
 
 #include "vulkan_device.hpp"
 
-namespace engine {
+namespace oxide {
 
 // ============================================================================
 // Push-constant range defaults

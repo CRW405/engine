@@ -1,12 +1,22 @@
-#include "glfw_engine.hpp"
+#include "glfw_oxide.hpp"
+#include "tools/log.hpp"
 
 #include <cstdio>
 #include <stdexcept>
 #include <utility>
 
-namespace engine {
+namespace oxide {
 
 std::unordered_map<GLFWwindow *, Window *> Window::instances_;
+
+namespace {
+
+void glfwErrorCallback(int code, const char *description) {
+	OXIDE_LOG_ERROR << "GLFW error " << code << ": "
+	                << (description != nullptr ? description : "(no description)");
+}
+
+} // namespace
 
 // -----------------------------------------------------------------------------
 // GLFW lifetime and window management
@@ -17,8 +27,12 @@ std::unordered_map<GLFWwindow *, Window *> Window::instances_;
 GLFWContext::GLFWContext() {
 	// Step 1: initialize GLFW before any window or Vulkan surface is created.
 	if (!glfwInit()) {
-		throw std::runtime_error("Failed to initialize GLFW");
+		const char *description = nullptr;
+		glfwGetError(&description);
+		throw runtimeError(std::string("failed to initialize GLFW") +
+		                   (description != nullptr ? ": " + std::string(description) : ""));
 	}
+	glfwSetErrorCallback(glfwErrorCallback);
 }
 
 GLFWContext::~GLFWContext() {
@@ -28,7 +42,7 @@ GLFWContext::~GLFWContext() {
 Window::Window(const WindowConfig &config) {
 	// Step 2: reject invalid settings before passing them to GLFW.
 	if (config.width <= 0 || config.height <= 0 || config.title.empty()) {
-		throw std::invalid_argument("window dimensions and title must be valid");
+		throw invalidArgument("window dimensions and title must be valid");
 	}
 
 	// Step 3: create a window with Vulkan presentation handled externally.
@@ -39,7 +53,10 @@ Window::Window(const WindowConfig &config) {
 	glfwWindowHintString(GLFW_WAYLAND_APP_ID, "make-me-float"); // debug helper for hyprland
 	window_ = glfwCreateWindow(config.width, config.height, config.title.c_str(), nullptr, nullptr);
 	if (window_ == nullptr) {
-		throw std::runtime_error("failed to create GLFW window");
+		const char *description = nullptr;
+		glfwGetError(&description);
+		throw runtimeError(std::string("failed to create GLFW window") +
+		                   (description != nullptr ? ": " + std::string(description) : ""));
 	}
 	instances_[window_] = this;
 	glfwSetKeyCallback(window_, keyCallback);
@@ -175,4 +192,4 @@ void Window::handleScrollEvent(double x_offset, double y_offset) noexcept {
 	scroll_delta_.y += y_offset;
 }
 
-} // namespace engine
+} // namespace oxide

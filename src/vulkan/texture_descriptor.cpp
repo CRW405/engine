@@ -1,7 +1,7 @@
 #include "texture_descriptor.hpp"
 #include "image_texture.hpp"
 
-namespace engine {
+namespace oxide {
 
 // -----------------------------------------------------------------------------
 // Texture descriptor lifetime and update
@@ -35,4 +35,4 @@ TextureDescriptorSet::TextureDescriptorSet(
 	vkUpdateDescriptorSets(device.device(), 1, &descriptorWrite, 0, nullptr);
 }
 
-} // namespace engine
+} // namespace oxide

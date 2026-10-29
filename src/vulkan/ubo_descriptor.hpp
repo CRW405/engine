@@ -7,7 +7,7 @@
 
 #include "descriptor_set.hpp"
 
-namespace engine {
+namespace oxide {
 
 class Buffer;
 
@@ -22,6 +22,10 @@ class Buffer;
 // 0 to the vertex stage. Override the binding or stage in the constructor when
 // a shader uses a different interface. More complex layouts should use
 // DescriptorSetLayout with explicit bindings.
+//
+// This wrapper is best for static data or data the application synchronizes
+// itself. For per-frame data, use UniformBufferRing so every frame in flight
+// has its own buffer and descriptor set.
 // ============================================================================
 class UBODescriptorSet {
   public:
@@ -56,4 +60,4 @@ class UBODescriptorSet {
 	DescriptorSet       set_;
 };
 
-} // namespace engine
+} // namespace oxide

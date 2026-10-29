@@ -1,9 +1,11 @@
 #include "descriptor_set.hpp"
+#include "tools/log.hpp"
+#include "vk_error.hpp"
 
 #include <stdexcept>
 #include <vector>
 
-namespace engine {
+namespace oxide {
 
 // -----------------------------------------------------------------------------
 // Descriptor layout lifetime
@@ -23,9 +25,8 @@ DescriptorSetLayout::DescriptorSetLayout(
 	createInfo.bindingCount = static_cast<std::uint32_t>(layoutBindings.size());
 	createInfo.pBindings    = layoutBindings.data();
 
-	if (vkCreateDescriptorSetLayout(device_.device(), &createInfo, nullptr, &layout_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create descriptor set layout");
-	}
+	checkVk(vkCreateDescriptorSetLayout(device_.device(), &createInfo, nullptr, &layout_),
+	        "create descriptor set layout");
 }
 
 DescriptorSetLayout::DescriptorSetLayout(VulkanDevice &device, const DescriptorBinding &binding)
@@ -45,6 +46,12 @@ DescriptorPool::DescriptorPool(
     std::initializer_list<VkDescriptorPoolSize> sizes,
     std::uint32_t                                maxSets)
     : device_(device) {
+	if (sizes.size() == 0) {
+		throw invalidArgument("descriptor pool requires at least one descriptor size");
+	}
+	if (maxSets == 0) {
+		throw invalidArgument("descriptor pool requires at least one descriptor set");
+	}
 	std::vector<VkDescriptorPoolSize> poolSizes(sizes);
 
 	VkDescriptorPoolCreateInfo createInfo{};
@@ -53,9 +60,8 @@ DescriptorPool::DescriptorPool(
 	createInfo.pPoolSizes    = poolSizes.data();
 	createInfo.maxSets       = maxSets;
 
-	if (vkCreateDescriptorPool(device_.device(), &createInfo, nullptr, &pool_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create descriptor pool");
-	}
+	checkVk(vkCreateDescriptorPool(device_.device(), &createInfo, nullptr, &pool_),
+	        "create descriptor pool");
 }
 
 DescriptorPool::DescriptorPool(
@@ -79,9 +85,7 @@ VkDescriptorSet DescriptorPool::allocate(VkDescriptorSetLayout layout) {
 	allocation.pSetLayouts        = &layout;
 
 	VkDescriptorSet set = VK_NULL_HANDLE;
-	if (vkAllocateDescriptorSets(device_.device(), &allocation, &set) != VK_SUCCESS) {
-		throw std::runtime_error("failed to allocate descriptor set");
-	}
+	checkVk(vkAllocateDescriptorSets(device_.device(), &allocation, &set), "allocate descriptor set");
 	return set;
 }
 
@@ -104,4 +108,4 @@ void DescriptorSet::bind(
 	                        nullptr);
 }
 
-} // namespace engine
+} // namespace oxide

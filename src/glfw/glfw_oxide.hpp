@@ -8,12 +8,12 @@
 #include <unordered_set>
 #include <utility>
 
-namespace engine {
+namespace oxide {
 
 struct WindowConfig {
 	int         width       = 500;
 	int         height      = 500;
-	std::string title       = "Engine";
+	std::string title       = "Oxide";
 	bool        resizable   = true;
 	bool        transparent = false;
 	bool        decorated   = true;
@@ -70,4 +70,4 @@ class Window {
 	static std::unordered_map<GLFWwindow *, Window *> instances_;
 };
 
-} // namespace engine
+} // namespace oxide

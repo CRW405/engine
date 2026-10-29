@@ -1,40 +1,67 @@
 #include "vulkan_device.hpp"
+#include "oxide_config.hpp"
+#include "tools/log.hpp"
+#include "vk_error.hpp"
 
 #include <algorithm>
-#include <iostream>
+#include <cstring>
 #include <set>
 #include <stdexcept>
 #include <utility>
 
-namespace engine {
+namespace oxide {
 
 // -----------------------------------------------------------------------------
 // Vulkan instance, device, and queue setup
 //
-// Validation is kept enabled for learning and development. The debug messenger
-// is attached to instance creation so validation can report setup errors as
-// well as errors that occur after the instance exists.
+// Validation is enabled by default for learning and development, and can be
+// disabled for release builds with -DOXIDE_ENABLE_VALIDATION=OFF. The debug
+// messenger is attached to instance creation so validation can report setup
+// errors as well as errors that occur after the instance exists.
 // -----------------------------------------------------------------------------
-constexpr bool        enable_validation   = true;
+constexpr bool        enable_validation   = OXIDE_ENABLE_VALIDATION != 0;
 constexpr const char *validation_layer    = "VK_LAYER_KHRONOS_validation";
 constexpr const char *swapchain_extension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 constexpr const char *debug_extension     = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT      severity,
-    VkDebugUtilsMessageTypeFlagsEXT,
+    VkDebugUtilsMessageTypeFlagsEXT             type,
     const VkDebugUtilsMessengerCallbackDataEXT *callback_data,
     void *) {
-	const char *label = severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ? "ERROR" : "INFO";
-	std::cerr << "[Vulkan " << label << "] " << callback_data->pMessage << '\n';
+	if (callback_data == nullptr) {
+		return VK_FALSE;
+	}
+
+	LogLevel level = LogLevel::Info;
+	if ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0) {
+		level = LogLevel::Error;
+	} else if ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0) {
+		level = LogLevel::Warning;
+	}
+
+	std::string source = "Vulkan";
+	if ((type & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) != 0) {
+		source += " validation";
+	} else if ((type & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) != 0) {
+		source += " performance";
+	} else if ((type & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) != 0) {
+		source += " general";
+	}
+
+	std::string message = source;
+	message += ": ";
+	message += callback_data->pMessage != nullptr ? callback_data->pMessage : "(no message)";
+	logMessage(level, message, {});
 	return VK_FALSE;
 }
 
 VkDebugUtilsMessengerCreateInfoEXT debugMessengerInfo() {
 	VkDebugUtilsMessengerCreateInfoEXT info{};
 	info.sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-	                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+	// Warnings and errors only: loader info/verbose messages are noisy and
+	// make real problems harder to spot in the terminal.
+	info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
 	                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
 	                   VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
@@ -46,9 +73,12 @@ VkDebugUtilsMessengerCreateInfoEXT debugMessengerInfo() {
 bool instanceExtensionAvailable(const char *name) {
 	// Query the loader before adding optional instance extensions.
 	std::uint32_t count = 0;
-	vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+	checkVk(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr), "enumerate Vulkan instance extensions");
 	std::vector<VkExtensionProperties> extensions(count);
-	vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
+	if (count > 0) {
+		checkVk(vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data()),
+		        "enumerate Vulkan instance extensions");
+	}
 	return std::any_of(extensions.begin(), extensions.end(), [name](const VkExtensionProperties &extension) {
 		return std::strcmp(extension.extensionName, name) == 0;
 	});
@@ -57,9 +87,11 @@ bool instanceExtensionAvailable(const char *name) {
 bool validationAvailable() {
 	// Validation is required by this development-oriented bootstrap.
 	std::uint32_t count = 0;
-	vkEnumerateInstanceLayerProperties(&count, nullptr);
+	checkVk(vkEnumerateInstanceLayerProperties(&count, nullptr), "enumerate Vulkan instance layers");
 	std::vector<VkLayerProperties> layers(count);
-	vkEnumerateInstanceLayerProperties(&count, layers.data());
+	if (count > 0) {
+		checkVk(vkEnumerateInstanceLayerProperties(&count, layers.data()), "enumerate Vulkan instance layers");
+	}
 	return std::any_of(layers.begin(), layers.end(), [](const VkLayerProperties &layer) {
 		return std::strcmp(layer.layerName, validation_layer) == 0;
 	});
@@ -68,9 +100,13 @@ bool validationAvailable() {
 bool swapchainExtensionAvailable(VkPhysicalDevice device) {
 	// A device must expose swapchain support before it can present.
 	std::uint32_t count = 0;
-	vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
+	checkVk(vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr),
+	        "enumerate Vulkan device extensions");
 	std::vector<VkExtensionProperties> extensions(count);
-	vkEnumerateDeviceExtensionProperties(device, nullptr, &count, extensions.data());
+	if (count > 0) {
+		checkVk(vkEnumerateDeviceExtensionProperties(device, nullptr, &count, extensions.data()),
+		        "enumerate Vulkan device extensions");
+	}
 	return std::any_of(extensions.begin(), extensions.end(), [](const VkExtensionProperties &extension) {
 		return std::strcmp(extension.extensionName, swapchain_extension) == 0;
 	});
@@ -82,17 +118,19 @@ VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_
 	// queue families during physical-device selection.
 	//
 	if (main_window == nullptr) {
-		throw std::invalid_argument("VulkanDevice requires a valid window");
+		throw invalidArgument("VulkanDevice requires a valid window");
 	}
 
 	createInstance(app_name_);
 
 	VkSurfaceKHR selection_surface = VK_NULL_HANDLE;
-	if (glfwCreateWindowSurface(instance_, main_window, nullptr, &selection_surface) != VK_SUCCESS) {
+	const VkResult surface_result =
+	    glfwCreateWindowSurface(instance_, main_window, nullptr, &selection_surface);
+	if (surface_result != VK_SUCCESS) {
 		destroyDebugMessenger();
 		vkDestroyInstance(instance_, nullptr);
 		instance_ = VK_NULL_HANDLE;
-		throw std::runtime_error("failed to create Vulkan surface for device selection");
+		throw vkError("create Vulkan surface for device selection", surface_result);
 	}
 
 	try {
@@ -119,7 +157,7 @@ VulkanDevice::VulkanDevice(GLFWwindow *main_window, std::string app_name) : app_
 
 VulkanDevice::~VulkanDevice() {
 	if (device_ != VK_NULL_HANDLE) {
-		waitIdle();
+		logVkFailure(vkDeviceWaitIdle(device_), "wait for Vulkan device during shutdown");
 		if (command_pool_ != VK_NULL_HANDLE) {
 			vkDestroyCommandPool(device_, command_pool_, nullptr);
 		}
@@ -133,9 +171,7 @@ VulkanDevice::~VulkanDevice() {
 
 void VulkanDevice::waitIdle() const {
 	if (device_ != VK_NULL_HANDLE) {
-		if (vkDeviceWaitIdle(device_) != VK_SUCCESS) {
-			throw std::runtime_error("failed to wait for Vulkan device");
-		}
+		checkVk(vkDeviceWaitIdle(device_), "wait for Vulkan device");
 	}
 }
 
@@ -145,7 +181,7 @@ void VulkanDevice::createInstance(const std::string app_name) {
 	// GLFW. The debug extension is added only when the loader provides it.
 	// -------------------------------------------------------------------------
 	if (enable_validation && !validationAvailable()) {
-		throw std::runtime_error("Vulkan validation layer is unavailable");
+		throw runtimeError(std::string("Vulkan validation layer is unavailable: ") + validation_layer);
 	}
 
 	// -------------------------------------------------------------------------
@@ -156,17 +192,22 @@ void VulkanDevice::createInstance(const std::string app_name) {
 	app_info.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	app_info.pApplicationName   = app_name.c_str();
 	app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
-	app_info.pEngineName        = "Engine";
+	app_info.pEngineName        = "Oxide";
 	app_info.engineVersion      = VK_MAKE_VERSION(0, 1, 0);
 	app_info.apiVersion         = VK_API_VERSION_1_0;
 
 	std::uint32_t glfw_extension_count = 0;
 	const char  **glfw_extensions       = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
 	if (glfw_extensions == nullptr) {
-		throw std::runtime_error("GLFW did not provide Vulkan extensions");
+		throw runtimeError("GLFW did not provide Vulkan extensions");
 	}
 	std::vector<const char *> extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
-	const bool                has_debug_extension = instanceExtensionAvailable(debug_extension);
+	const bool                has_debug_extension =
+	    enable_validation && instanceExtensionAvailable(debug_extension);
+	if (enable_validation && !has_debug_extension) {
+		OXIDE_LOG_WARNING << "Vulkan debug utils extension is unavailable; "
+		                     "validation messages will not be printed";
+	}
 	if (enable_validation && has_debug_extension) {
 		extensions.push_back(debug_extension);
 	}
@@ -185,11 +226,15 @@ void VulkanDevice::createInstance(const std::string app_name) {
 		debug_info = debugMessengerInfo();
 		info.pNext = &debug_info;
 	}
-	if (vkCreateInstance(&info, nullptr, &instance_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create Vulkan instance");
-	}
+	checkVk(vkCreateInstance(&info, nullptr, &instance_), "create Vulkan instance");
 	if (enable_validation && has_debug_extension) {
-		setupDebugMessenger();
+		try {
+			setupDebugMessenger();
+		} catch (...) {
+			vkDestroyInstance(instance_, nullptr);
+			instance_ = VK_NULL_HANDLE;
+			throw;
+		}
 	}
 }
 
@@ -198,12 +243,11 @@ void VulkanDevice::setupDebugMessenger() {
 	const auto create_messenger = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
 	    vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT"));
 	if (create_messenger == nullptr) {
-		throw std::runtime_error("failed to load Vulkan debug messenger function");
+		throw runtimeError("failed to load Vulkan debug messenger function");
 	}
 	const VkDebugUtilsMessengerCreateInfoEXT info = debugMessengerInfo();
-	if (create_messenger(instance_, &info, nullptr, &debug_messenger_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create Vulkan debug messenger");
-	}
+	checkVk(create_messenger(instance_, &info, nullptr, &debug_messenger_),
+	        "create Vulkan debug messenger");
 }
 
 void VulkanDevice::destroyDebugMessenger() noexcept {
@@ -215,6 +259,9 @@ void VulkanDevice::destroyDebugMessenger() noexcept {
 	    vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT"));
 	if (destroy_messenger != nullptr) {
 		destroy_messenger(instance_, debug_messenger_, nullptr);
+	} else {
+		OXIDE_LOG_WARNING << "Vulkan destroy debug messenger function is unavailable; "
+		                     "the messenger was not destroyed";
 	}
 	debug_messenger_ = VK_NULL_HANDLE;
 }
@@ -237,7 +284,8 @@ QueueFamilies VulkanDevice::findQueueFamilies(VkPhysicalDevice device, VkSurface
 		}
 
 		VkBool32 present = VK_FALSE;
-		vkGetPhysicalDeviceSurfaceSupportKHR(device, index, surface, &present);
+		checkVk(vkGetPhysicalDeviceSurfaceSupportKHR(device, index, surface, &present),
+		        "query Vulkan surface presentation support");
 		if (present == VK_TRUE) {
 			result.present    = index;
 			result.hasPresent = true;
@@ -261,7 +309,9 @@ std::uint32_t VulkanDevice::findMemoryType(std::uint32_t typeFilter, VkMemoryPro
 		}
 	}
 
-	throw std::runtime_error("failed to find suitable memory type");
+	throw runtimeError("failed to find a suitable Vulkan memory type (typeBits=" +
+	                   std::to_string(typeFilter) + ", properties=" +
+	                   std::to_string(properties) + ")");
 }
 
 void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
@@ -270,14 +320,13 @@ void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
 	// extension. This keeps selection predictable while the bootstrap is small.
 	//
 	std::uint32_t count = 0;
-	if (vkEnumeratePhysicalDevices(instance_, &count, nullptr) != VK_SUCCESS || count == 0) {
-		throw std::runtime_error("no Vulkan devices found");
+	checkVk(vkEnumeratePhysicalDevices(instance_, &count, nullptr), "enumerate Vulkan devices");
+	if (count == 0) {
+		throw runtimeError("no Vulkan devices found");
 	}
 
 	std::vector<VkPhysicalDevice> devices(count);
-	if (vkEnumeratePhysicalDevices(instance_, &count, devices.data()) != VK_SUCCESS) {
-		throw std::runtime_error("failed to enumerate Vulkan devices");
-	}
+	checkVk(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), "enumerate Vulkan devices");
 
 	for (VkPhysicalDevice device : devices) {
 		const QueueFamilies queues = findQueueFamilies(device, surface);
@@ -285,11 +334,11 @@ void VulkanDevice::selectPhysicalDevice(VkSurfaceKHR surface) {
 			physical_device_ = device;
 			VkPhysicalDeviceProperties properties{};
 			vkGetPhysicalDeviceProperties(physical_device_, &properties);
-			std::cout << "Selected Vulkan device: " << properties.deviceName << std::endl;
+			OXIDE_LOG_INFO << "selected Vulkan device: " << properties.deviceName;
 			return;
 		}
 	}
-	throw std::runtime_error("no suitable Vulkan device found");
+	throw runtimeError("no suitable Vulkan device found");
 }
 
 void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface) {
@@ -316,9 +365,7 @@ void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface) {
 	info.pQueueCreateInfos       = queue_infos.data();
 	info.enabledExtensionCount   = 1;
 	info.ppEnabledExtensionNames = &swapchain_extension;
-	if (vkCreateDevice(physical_device_, &info, nullptr, &device_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create logical device");
-	}
+	checkVk(vkCreateDevice(physical_device_, &info, nullptr, &device_), "create logical device");
 
 	vkGetDeviceQueue(device_, queues.graphics, 0, &graphics_queue_);
 	vkGetDeviceQueue(device_, queues.present, 0, &present_queue_);
@@ -327,9 +374,7 @@ void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface) {
 	pool_info.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	pool_info.flags            = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
 	pool_info.queueFamilyIndex = queues.graphics;
-	if (vkCreateCommandPool(device_, &pool_info, nullptr, &command_pool_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create command pool");
-	}
+	checkVk(vkCreateCommandPool(device_, &pool_info, nullptr, &command_pool_), "create Vulkan device command pool");
 }
 
 }

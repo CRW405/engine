@@ -1,5 +1,7 @@
 #include "image_texture.hpp"
 #include "buffer.hpp"
+#include "tools/log.hpp"
+#include "vk_error.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -7,7 +9,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace engine {
+namespace oxide {
 
 VkCommandBuffer beginSingleTimeCommands(VulkanDevice &device) {
 	VkCommandBufferAllocateInfo allocInfo{};
@@ -16,28 +18,40 @@ VkCommandBuffer beginSingleTimeCommands(VulkanDevice &device) {
 	allocInfo.commandPool        = device.commandPool();
 	allocInfo.commandBufferCount = 1;
 
-	VkCommandBuffer commandBuffer;
-	vkAllocateCommandBuffers(device.device(), &allocInfo, &commandBuffer);
+	VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+	checkVk(vkAllocateCommandBuffers(device.device(), &allocInfo, &commandBuffer),
+	        "allocate one-time command buffer");
 
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-	vkBeginCommandBuffer(commandBuffer, &beginInfo);
+	try {
+		checkVk(vkBeginCommandBuffer(commandBuffer, &beginInfo), "begin one-time command buffer");
+	} catch (...) {
+		vkFreeCommandBuffers(device.device(), device.commandPool(), 1, &commandBuffer);
+		throw;
+	}
 
 	return commandBuffer;
 }
 
 void endSingleTimeCommands(VulkanDevice &device, VkCommandBuffer commandBuffer) {
-	vkEndCommandBuffer(commandBuffer);
+	try {
+		checkVk(vkEndCommandBuffer(commandBuffer), "end one-time command buffer");
 
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers    = &commandBuffer;
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers    = &commandBuffer;
 
-	vkQueueSubmit(device.graphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
-	vkQueueWaitIdle(device.graphicsQueue());
+		checkVk(vkQueueSubmit(device.graphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE),
+		        "submit one-time command buffer");
+		checkVk(vkQueueWaitIdle(device.graphicsQueue()), "wait for one-time command buffer");
+	} catch (...) {
+		vkFreeCommandBuffers(device.device(), device.commandPool(), 1, &commandBuffer);
+		throw;
+	}
 
 	vkFreeCommandBuffers(device.device(), device.commandPool(), 1, &commandBuffer);
 }
@@ -74,7 +88,9 @@ void transitionImageLayout(VulkanDevice &device, VkImage image, VkImageLayout ol
 		sourceStage      = VK_PIPELINE_STAGE_TRANSFER_BIT;
 		destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 	} else {
-		throw std::invalid_argument("Unsupported layout transition!");
+		throw invalidArgument("unsupported image layout transition (" +
+		                      std::to_string(static_cast<int>(oldLayout)) + " -> " +
+		                      std::to_string(static_cast<int>(newLayout)) + ")");
 	}
 
 	vkCmdPipelineBarrier(commandBuffer,
@@ -116,115 +132,142 @@ void copyBufferToImage(VulkanDevice &device, VkBuffer buffer, VkImage image, uin
 }
 
 ImageTexture::ImageTexture(VulkanDevice &device, const std::string &imagePath) : device_(device) {
-	// Load the image using stb_image
-	int width, height, channels;
+	// Load the image using stb_image.
+	int width = 0;
+	int height = 0;
+	int channels = 0;
 	// assuming 4 channels of 1 byte each (RGBA)
-	stbi_uc     *pixels    = stbi_load(imagePath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-	if (!pixels) {
-		throw std::runtime_error("Failed to load texture image: " + imagePath);
+	stbi_uc *pixels = stbi_load(imagePath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+	if (pixels == nullptr) {
+		const char *reason = stbi_failure_reason();
+		throw runtimeError("failed to load texture image '" + imagePath + "'" +
+		                   (reason != nullptr ? ": " + std::string(reason) : ""));
 	}
-	VkDeviceSize imageSize = width * height * 4;
-
-	// cpu staging buffer
-	Buffer stagingBuffer(device_, pixels, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-	stbi_image_free(pixels);
-
-	// create VkImage
-	VkImageCreateInfo imageInfo{};
-	imageInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imageInfo.imageType     = VK_IMAGE_TYPE_2D;
-	imageInfo.extent.width  = static_cast<uint32_t>(width);
-	imageInfo.extent.height = static_cast<uint32_t>(height);
-	imageInfo.extent.depth  = 1;
-	imageInfo.mipLevels     = 1;
-	imageInfo.arrayLayers   = 1;
-	imageInfo.format        = VK_FORMAT_R8G8B8A8_SRGB;
-	imageInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
-	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	imageInfo.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-	imageInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
-	imageInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
-	if (vkCreateImage(device_.device(), &imageInfo, nullptr, &image_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create image!");
+	if (width <= 0 || height <= 0) {
+		stbi_image_free(pixels);
+		throw runtimeError("texture image has invalid dimensions '" + imagePath + "' (" +
+		                   std::to_string(width) + "x" + std::to_string(height) + ")");
 	}
 
-	// allocate memory on the GPU
-	VkMemoryRequirements memRequirements;
-	vkGetImageMemoryRequirements(device_.device(), image_, &memRequirements);
-	VkMemoryAllocateInfo allocInfo{};
-	allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize  = memRequirements.size;
-	allocInfo.memoryTypeIndex = device_.findMemoryType(memRequirements.memoryTypeBits,
-	                                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	if (vkAllocateMemory(device_.device(), &allocInfo, nullptr, &image_memory) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to allocate image memory!");
-	}
-	vkBindImageMemory(device_.device(), image_, image_memory, 0);
+	const VkDeviceSize imageSize = static_cast<VkDeviceSize>(width) *
+	                               static_cast<VkDeviceSize>(height) * 4;
 
-	// transition image layout and copy data from staging buffer to image
-	transitionImageLayout(device_,
-	                      image_,
-	                      VK_IMAGE_LAYOUT_UNDEFINED,
-	                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	copyBufferToImage(device_,
-	                  stagingBuffer.buffer(),
-	                  image_,
-	                  static_cast<uint32_t>(width),
-	                  static_cast<uint32_t>(height));
-	transitionImageLayout(device_,
-	                      image_,
-	                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-	                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	try {
+		// cpu staging buffer
+		Buffer stagingBuffer(device_, pixels, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+		stbi_image_free(pixels);
+		pixels = nullptr;
 
-	// create image view
-	VkImageViewCreateInfo viewInfo{};
-	viewInfo.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewInfo.image                           = image_;
-	viewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
-	viewInfo.format                          = VK_FORMAT_R8G8B8A8_SRGB;
-	viewInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-	viewInfo.subresourceRange.baseMipLevel   = 0;
-	viewInfo.subresourceRange.levelCount     = 1;
-	viewInfo.subresourceRange.baseArrayLayer = 0;
-	viewInfo.subresourceRange.layerCount     = 1;
-	if (vkCreateImageView(device_.device(), &viewInfo, nullptr, &image_view_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create texture image view!");
-	}
+		// create VkImage
+		VkImageCreateInfo imageInfo{};
+		imageInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType     = VK_IMAGE_TYPE_2D;
+		imageInfo.extent.width  = static_cast<uint32_t>(width);
+		imageInfo.extent.height = static_cast<uint32_t>(height);
+		imageInfo.extent.depth  = 1;
+		imageInfo.mipLevels     = 1;
+		imageInfo.arrayLayers   = 1;
+		imageInfo.format        = VK_FORMAT_R8G8B8A8_SRGB;
+		imageInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageInfo.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		imageInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+		imageInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+		checkVk(vkCreateImage(device_.device(), &imageInfo, nullptr, &image_), "create texture image");
 
-	// create sampler so that the shader can sample from the texture
-	VkSamplerCreateInfo samplerInfo{};
-	samplerInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerInfo.magFilter               = VK_FILTER_LINEAR;
-	samplerInfo.minFilter               = VK_FILTER_LINEAR;
-	samplerInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerInfo.anisotropyEnable        = VK_FALSE;
-	samplerInfo.maxAnisotropy           = 1.0f;
-	samplerInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	samplerInfo.unnormalizedCoordinates = VK_FALSE;
-	samplerInfo.compareEnable           = VK_FALSE;
-	samplerInfo.compareOp               = VK_COMPARE_OP_ALWAYS;
-	samplerInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	if (vkCreateSampler(device_.device(), &samplerInfo, nullptr, &sample_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create texture sampler!");
+		// allocate memory on the GPU
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(device_.device(), image_, &memRequirements);
+		VkMemoryAllocateInfo allocInfo{};
+		allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize  = memRequirements.size;
+		allocInfo.memoryTypeIndex = device_.findMemoryType(memRequirements.memoryTypeBits,
+		                                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		const VkResult allocate_result = vkAllocateMemory(device_.device(), &allocInfo, nullptr, &image_memory);
+		if (allocate_result != VK_SUCCESS) {
+			throw vkError("allocate texture image memory", allocate_result);
+		}
+		checkVk(vkBindImageMemory(device_.device(), image_, image_memory, 0), "bind texture image memory");
+
+		// transition image layout and copy data from staging buffer to image
+		transitionImageLayout(device_,
+		                      image_,
+		                      VK_IMAGE_LAYOUT_UNDEFINED,
+		                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		copyBufferToImage(device_,
+		                  stagingBuffer.buffer(),
+		                  image_,
+		                  static_cast<uint32_t>(width),
+		                  static_cast<uint32_t>(height));
+		transitionImageLayout(device_,
+		                      image_,
+		                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		// create image view
+		VkImageViewCreateInfo viewInfo{};
+		viewInfo.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image                           = image_;
+		viewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format                          = VK_FORMAT_R8G8B8A8_SRGB;
+		viewInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.baseMipLevel   = 0;
+		viewInfo.subresourceRange.levelCount     = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount     = 1;
+		checkVk(vkCreateImageView(device_.device(), &viewInfo, nullptr, &image_view_),
+		        "create texture image view");
+
+		// create sampler so that the shader can sample from the texture
+		VkSamplerCreateInfo samplerInfo{};
+		samplerInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.magFilter               = VK_FILTER_LINEAR;
+		samplerInfo.minFilter               = VK_FILTER_LINEAR;
+		samplerInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.anisotropyEnable        = VK_FALSE;
+		samplerInfo.maxAnisotropy           = 1.0f;
+		samplerInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		samplerInfo.unnormalizedCoordinates = VK_FALSE;
+		samplerInfo.compareEnable           = VK_FALSE;
+		samplerInfo.compareOp               = VK_COMPARE_OP_ALWAYS;
+		samplerInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		checkVk(vkCreateSampler(device_.device(), &samplerInfo, nullptr, &sample_),
+		        "create texture sampler");
+	} catch (...) {
+		if (pixels != nullptr) {
+			stbi_image_free(pixels);
+		}
+		destroyResources();
+		throw;
 	}
 }
 
 ImageTexture::~ImageTexture() {
-	if (device_.device() != VK_NULL_HANDLE) {
-		if (sample_ != VK_NULL_HANDLE) {
-			vkDestroySampler(device_.device(), sample_, nullptr);
-		}
-		if (image_view_ != VK_NULL_HANDLE) {
-			vkDestroyImageView(device_.device(), image_view_, nullptr);
-		}
-		if (image_ != VK_NULL_HANDLE) {
-			vkDestroyImage(device_.device(), image_, nullptr);
-		}
-		if (image_memory != VK_NULL_HANDLE) {
-			vkFreeMemory(device_.device(), image_memory, nullptr);
-		}
+	destroyResources();
+}
+
+void ImageTexture::destroyResources() noexcept {
+	if (device_.device() == VK_NULL_HANDLE) {
+		return;
+	}
+	if (sample_ != VK_NULL_HANDLE) {
+		vkDestroySampler(device_.device(), sample_, nullptr);
+		sample_ = VK_NULL_HANDLE;
+	}
+	if (image_view_ != VK_NULL_HANDLE) {
+		vkDestroyImageView(device_.device(), image_view_, nullptr);
+		image_view_ = VK_NULL_HANDLE;
+	}
+	if (image_ != VK_NULL_HANDLE) {
+		vkDestroyImage(device_.device(), image_, nullptr);
+		image_ = VK_NULL_HANDLE;
+	}
+	if (image_memory != VK_NULL_HANDLE) {
+		vkFreeMemory(device_.device(), image_memory, nullptr);
+		image_memory = VK_NULL_HANDLE;
 	}
 }
-} // namespace engine
+
+} // namespace oxide

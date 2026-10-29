@@ -8,9 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "glfw/glfw_engine.hpp"
+#include "glfw/glfw_oxide.hpp"
 
-namespace engine {
+namespace oxide {
 
 struct QueueFamilies {
 	std::uint32_t graphics    = 0;
@@ -28,7 +28,7 @@ struct QueueFamilies {
 // ============================================================================
 class VulkanDevice {
   public:
-	explicit VulkanDevice(GLFWwindow *main_window, std::string app_name = "Engine");
+	explicit VulkanDevice(GLFWwindow *main_window, std::string app_name = "Oxide");
 	~VulkanDevice();
 
 	VulkanDevice(const VulkanDevice &)            = delete;

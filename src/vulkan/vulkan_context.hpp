@@ -7,10 +7,10 @@
 #include <cstdint>
 #include <vector>
 
-#include "glfw/glfw_engine.hpp"
+#include "glfw/glfw_oxide.hpp"
 #include "vulkan_device.hpp"
 
-namespace engine {
+namespace oxide {
 
 constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -68,7 +68,7 @@ class VulkanContext {
 	void createCommandResources();
 
 	void destroySwapchain(bool destroy_render_pass = true);
-	void destroyWindowResources();
+	void destroyWindowResources() noexcept;
 
 	void waitForValidFramebufferSize() const;
 

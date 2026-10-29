@@ -9,7 +9,7 @@
 
 #include "vulkan_device.hpp"
 
-namespace engine {
+namespace oxide {
 
 // ============================================================================
 // GPU buffer ownership
@@ -48,6 +48,9 @@ class Buffer {
 // ============================================================================
 class UniformBuffer : public Buffer {
   public:
+	UniformBuffer(VulkanDevice &device, const void *data, VkDeviceSize size)
+	    : Buffer(device, data, size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) {}
+
 	template <typename T>
 	explicit UniformBuffer(VulkanDevice &device, const T &data)
 	    : Buffer(
@@ -137,4 +140,4 @@ class Mesh {
 	std::uint32_t index_count_  = 0;
 };
 
-} // namespace engine
+} // namespace oxide

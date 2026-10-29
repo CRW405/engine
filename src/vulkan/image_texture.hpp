@@ -6,7 +6,7 @@
 
 #include <string>
 
-namespace engine {
+namespace oxide {
 
 class ImageTexture {
   public:
@@ -22,6 +22,8 @@ class ImageTexture {
 	[[nodiscard]] VkSampler   sampler() const { return sample_; }
 
   private:
+	void destroyResources() noexcept;
+
 	VulkanDevice  &device_;
 	VkImage        image_       = VK_NULL_HANDLE;
 	VkDeviceMemory image_memory = VK_NULL_HANDLE;
@@ -29,4 +31,4 @@ class ImageTexture {
 	VkSampler      sample_      = VK_NULL_HANDLE;
 };
 
-} // namespace engine
+} // namespace oxide

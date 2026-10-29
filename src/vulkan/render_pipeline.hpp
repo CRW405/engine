@@ -9,7 +9,7 @@
 
 #include "vulkan_device.hpp"
 
-namespace engine {
+namespace oxide {
 
 // ============================================================================
 // Vertex input descriptions
@@ -111,7 +111,10 @@ class Pipeline {
 
   private:
 	static std::vector<char> readFile(const std::string &filepath);
-	void                     createShaderModule(const std::vector<char> &code, VkShaderModule *shaderModule);
+	void                     createShaderModule(
+	        const std::vector<char> &code,
+	        VkShaderModule          *shaderModule,
+	        const std::string       &filepath);
 
 	VulkanDevice    &device_;
 	VkPipeline       pipeline_         = VK_NULL_HANDLE;
