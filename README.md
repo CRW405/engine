@@ -126,175 +126,80 @@ those macros compile to no-ops, but exception behavior is unchanged.
 
 ## Technical overview
 
-### Architecture
-
-The code uses RAII to manage Vulkan and GLFW objects. Objects are created in
-dependency order and destroyed in reverse order. The public API lives in the
+Oxide uses RAII for both Vulkan and GLFW objects: objects are created in
+dependency order and destroyed in reverse, and the public API lives in the
 `oxide` namespace.
 
 `VulkanDevice` owns the Vulkan instance, selected physical device, logical
-device, and shared queues. `VulkanContext` owns resources connected to one
-window, including its surface, swapchain, render pass, framebuffers, command
-pool, and synchronization objects.
+device, debug messenger, shared command pool, and graphics/present queues.
+`VulkanContext` owns everything tied to one window: surface, swapchain, image
+views, render pass, framebuffers, command buffers, semaphores, and fences. It
+also handles resize and swapchain recreation. The frame loop keeps two frames
+in flight; `beginFrame()` waits on the current slot's fence and returns an empty
+frame while the swapchain is rebuilt.
 
-`Buffer` provides the common buffer and memory code. `VertexBuffer` and
-`IndexBuffer` add the binding operations needed for drawing. `UniformBuffer`
-wraps a typed value with the uniform-buffer usage flag. `Mesh` pairs a vertex and
-index buffer and records the common indexed draw with `bind()` and `draw()`.
+Drawing resources follow the same pattern, with one wrapper per Vulkan concept:
+buffers and meshes, images and textures, descriptor layouts/pools/sets, pipeline
+layouts with typed push constants, and graphics pipelines with configurable
+fixed-function state. The descriptor helpers default to the two common
+single-resource interfaces — one combined image sampler or one uniform buffer at
+binding `0`. For data rewritten every frame, `UniformBufferRing` provides one
+buffer and descriptor set per frame slot, so the CPU never overwrites memory the
+GPU may still be reading.
 
-`DescriptorSetLayout`, `DescriptorPool`, and `DescriptorSet` provide the shared
-descriptor plumbing. `combinedImageSampler()` and `uniformBuffer()` are the
-default bindings for the two common single-resource cases; build a
-`DescriptorSetLayout` from explicit `DescriptorBinding` values for more complex
-interfaces.
+Buffers currently use host-visible, host-coherent memory, which keeps uploads
+simple. A larger renderer would stage into device-local memory instead.
 
-`ImageTexture` loads an image and owns its image view and sampler.
-`TextureDescriptorSet` uses the shared descriptor wrappers to own the layout,
-pool, and set needed to sample that texture. Its defaults describe one combined
-image sampler at binding `0` in the fragment stage. Pass a different binding or
-stage to the constructor when a shader needs another interface. `bind()` records
-the set through a pipeline layout.
-
-`UBODescriptorSet` follows the same pattern for uniform buffers. Its defaults
-describe one uniform buffer at binding `0` in the vertex stage, which is enough
-for static data or data the application synchronizes itself. For data updated
-every frame, use `UniformBufferRing`: it owns one buffer and descriptor set per
-frame in flight. Update and bind by `Frame::frameIndex`; `beginFrame()` has
-already waited on that slot's fence, so the CPU never overwrites a buffer that
-the previous frame is still reading.
-
-`PipelineLayout` describes push constants and descriptor set layouts.
-`pushConstant<T>()` creates a `PushConstant` that carries its range, stage flags,
-and typed `push()` call so the layout and recorded data stay in sync.
-`Pipeline` loads SPIR-V shader files and creates a graphics pipeline from
-configurable fixed-function state. `defaultPipelineConfigInfo()` provides a
-sensible starting point, while the pipeline config fields stay public and can be
-overridden for custom rendering state.
-
-The current buffer implementation uses host-visible, host-coherent memory.
-That keeps data upload simple. A larger renderer would usually upload through
-a staging buffer into device-local memory.
-
-Each example keeps its GLSL sources in `examples/<name>/shaders`. CMake
-compiles them into SPIR-V next to the example binary and passes the output
-directory and the shared `assets/` directory to the program as
-`OXIDE_SHADER_DIR` and `OXIDE_ASSET_DIR`, so binaries can be launched from
-any working directory. The project uses C++20, GLFW, Vulkan, and `glslc` or
-`glslangValidator`.
+The project uses C++20, GLFW, Vulkan, and `glslc` or `glslangValidator`. Each
+example keeps its GLSL in `examples/<name>/shaders`; CMake compiles it to SPIR-V
+next to the binary and defines `OXIDE_SHADER_DIR` and `OXIDE_ASSET_DIR`, so
+binaries can run from any working directory.
 
 ### File map
 
-The following map lists the engine sources, build files, assets, and examples by
-directory.
-
-#### Build and configuration
-
-- `CMakeLists.txt` — Builds `oxide` as a static library, publishes its include
-  directories and dependencies, defines the validation/logging compile options,
-  and optionally adds the examples.
-- `examples/CMakeLists.txt` — Declares each example executable, compiles its
-  GLSL sources to SPIR-V, sets `OXIDE_SHADER_DIR` and `OXIDE_ASSET_DIR`, and adds
-  the `run_<example>` convenience targets.
-- `src/oxide_config.hpp` — Defaults for the compile-time
-  `OXIDE_ENABLE_VALIDATION` and `OXIDE_ENABLE_LOGGING` switches. CMake defines
-  them as `0` or `1`.
-- `assets/smiley_0.png` — Shared texture used by the image and showcase examples.
-
-#### GLFW layer (`src/glfw`)
-
-- `src/glfw/glfw_oxide.{hpp,cpp}` — Declares and implements `WindowConfig`,
-  `MousePosition`, `GLFWContext`, and `Window`. The header exposes the window
-  API and input state; the source handles GLFW initialization/termination,
-  window creation/destruction, callback dispatch, key/scroll tracking, and the
-  process-wide GLFW error callback. A static handle-to-wrapper map lets GLFW
-  callbacks find the owning `Window`.
-
-#### Utilities (`src/tools`)
-
-- `src/tools/log.{hpp,cpp}` — Declares the log levels, `LogLine`, located
-  exception factories, and `OXIDE_LOG_*` macros; implements stderr formatting,
-  ANSI/`NO_COLOR` handling, and `file:line` exception messages. Disabled logging
-  builds compile the macros to a `NullLogLine` sink.
-- `src/tools/fps.{hpp,cpp}` — Declares and implements `FPSCounter`, which
-  accumulates frame counts, reports once per second, and overwrites the current
-  terminal line.
-
-#### Vulkan core (`src/vulkan`)
-
-- `src/vulkan/vulkan_device.{hpp,cpp}` — Declares `QueueFamilies` and
-  `VulkanDevice` and implements instance/device setup. The object owns the
-  instance, selected physical and logical devices, graphics/present queues,
-  debug messenger, and shared command pool; the source creates the instance,
-  optionally enables validation, enumerates devices/extensions/layers, selects
-  queues, creates the logical device, and resolves memory types.
-- `src/vulkan/vulkan_context.{hpp,cpp}` — Declares `Frame`,
+- **Build and configuration** — `CMakeLists.txt` builds `oxide` as a static
+  library, publishes its include directories and dependencies, and defines the
+  `OXIDE_ENABLE_VALIDATION` and `OXIDE_ENABLE_LOGGING` options.
+  `examples/CMakeLists.txt` declares the example executables, compiles their
+  shaders, and adds the `run_<example>` targets. `src/oxide_config.hpp` holds
+  the compile-time defaults for those switches.
+- **GLFW layer** — `src/glfw/glfw_oxide.{hpp,cpp}` declares `WindowConfig`,
+  `MousePosition`, `GLFWContext`, and `Window`, and implements initialization,
+  window lifecycle, callback dispatch, input tracking, and the GLFW error
+  callback.
+- **Utilities** — `src/tools/log.{hpp,cpp}` provides log levels, `LogLine`,
+  located exception factories, `OXIDE_LOG_*` macros, and `NO_COLOR` handling.
+  `src/tools/fps.{hpp,cpp}` provides `FPSCounter`.
+- **Vulkan core** — `src/vulkan/vulkan_device.{hpp,cpp}` declares
+  `QueueFamilies` and `VulkanDevice` and implements instance, device, queue, and
+  memory-type setup. `src/vulkan/vulkan_context.{hpp,cpp}` declares `Frame`,
   `MAX_FRAMES_IN_FLIGHT`, and `VulkanContext` and implements per-window
-  presentation. The context owns the surface, swapchain, image views, render
-  pass, framebuffers, command pool/buffers, semaphores, and fences, and handles
-  the frame lifecycle plus resize/out-of-date recreation.
-- `src/vulkan/vk_error.hpp` — Maps `VkResult` values to names and provides
-  `checkVk`, `vkError`, and `logVkFailure` helpers so Vulkan failures report the
-  operation, result code, and call site.
-- `src/vulkan/buffer.{hpp,cpp}` — Declares `Buffer`, `VertexBuffer`,
-  `IndexBuffer`, `UniformBuffer`, and `Mesh`; implements creation, host-visible
-  allocation, binding, mapping, upload/update, and mesh bind/draw helpers.
-- `src/vulkan/descriptor_set.{hpp,cpp}` — Declares `DescriptorBinding`, the
-  `combinedImageSampler()` and `uniformBuffer()` factories, and the
-  `DescriptorSetLayout`, `DescriptorPool`, and `DescriptorSet` RAII wrappers;
-  implements layout/pool creation, set allocation, and command-buffer binding.
-- `src/vulkan/ubo_descriptor.{hpp,cpp}` — Single uniform-buffer wrapper with one
-  layout, pool, and set; the implementation points the descriptor write at the
-  supplied buffer's full range. Best for static or externally synchronized data.
-- `src/vulkan/uniform_buffer_ring.{hpp,cpp}` — Per-frame UBO helper with one
-  buffer and descriptor set per frame slot plus a shared layout/pool; implements
-  allocation, descriptor writes, and frame-indexed update/bind operations. This
-  is the safe path for data rewritten every frame.
-- `src/vulkan/texture_descriptor.{hpp,cpp}` — Combined-image-sampler wrapper
-  owning one layout, pool, and set for an `ImageTexture`; the implementation
-  writes the image view and sampler into the set.
-- `src/vulkan/image_texture.{hpp,cpp}` — Declares and implements `ImageTexture`,
-  which owns a `VkImage`, memory, view, and sampler. It loads with stb_image,
-  uploads through a staging buffer, transitions layout, creates the view and
-  sampler, and cleans up partial resources on failure.
-- `src/vulkan/pipeline_layout.{hpp,cpp}` — Declares `PushConstant`,
-  `pushConstant<T>()`, `pushConstantRange<T>()`, and `PipelineLayout`; implements
-  layout creation/destruction, typed push helpers, and descriptor-set binding.
-- `src/vulkan/render_pipeline.{hpp,cpp}` — Declares `VertexInputDescription`,
-  `PipelineConfigInfo`, and `Pipeline`; implements pointer repair for copied
-  configs, default fixed-function state, SPIR-V loading, shader modules, pipeline
-  creation, and bind/draw helpers.
-
-#### Examples (`examples/`)
-
-- `examples/triangle/main.cpp` — Rotating indexed triangle. Demonstrates vertex
-  and index buffers, a transform push constant, and the basic frame loop.
-- `examples/triangle/shaders/vulkan_triangle.vert` — Applies the push-constant
-  transform and forwards vertex color.
-- `examples/triangle/shaders/vulkan_triangle.frag` — Writes the interpolated
-  vertex color.
-- `examples/sierpinski/main.cpp` — Fractal demo driven by iteration depth, zoom,
-  and aspect-ratio push constants.
-- `examples/sierpinski/shaders/sierpinski_triangle.vert` — Emits a full-screen
-  triangle and passes its coordinates to the fragment stage.
-- `examples/sierpinski/shaders/sierpinski_triangle.frag` — Evaluates the
-  iterated function system per fragment and colors the fractal.
-- `examples/image_texture/main.cpp` — Textured quad using `ImageTexture` and
-  `TextureDescriptorSet`; loads the shared smiley asset.
-- `examples/image_texture/shaders/simple_texture.vert` — Passes position, color,
-  and texture coordinates, flipping V for the stb/Vulkan conventions.
-- `examples/image_texture/shaders/simple_texture.frag` — Samples the combined
-  image sampler.
-- `examples/uniform_buffer/main.cpp` — Rotating quad using per-frame MVP uniform
-  buffers via `UniformBufferRing`.
-- `examples/uniform_buffer/shaders/ubo.vert` — Applies model/view/projection
-  from descriptor set `0`.
-- `examples/uniform_buffer/shaders/ubo.frag` — Writes interpolated vertex color.
-- `examples/showcase/main.cpp` — Combined demo with texture, per-frame UBO,
-  push constants, input, and FPS output.
-- `examples/showcase/shaders/showcase.vert` — Uses the set-1 UBO for MVP, adds a
-  push-constant wave, and forwards color and texture coordinates.
-- `examples/showcase/shaders/showcase.frag` — Combines texture and vertex color
-  and applies the push-constant tint.
+  presentation, frame lifecycle, and swapchain recreation.
+  `src/vulkan/vk_error.hpp` maps `VkResult` values to names and provides
+  `checkVk`, `vkError`, and `logVkFailure`.
+- **Buffers** — `src/vulkan/buffer.{hpp,cpp}` declares `Buffer`,
+  `VertexBuffer`, `IndexBuffer`, `UniformBuffer`, and `Mesh`, and implements
+  allocation, mapping, upload/update, binding, and indexed draws.
+- **Descriptors** — `src/vulkan/descriptor_set.{hpp,cpp}` declares
+  `DescriptorBinding`, the `combinedImageSampler()` and `uniformBuffer()`
+  factories, and the `DescriptorSetLayout`, `DescriptorPool`, and
+  `DescriptorSet` wrappers. `ubo_descriptor.{hpp,cpp}` and
+  `uniform_buffer_ring.{hpp,cpp}` add the single and per-frame UBO helpers;
+  `texture_descriptor.{hpp,cpp}` owns the layout, pool, and set for an
+  `ImageTexture`.
+- **Textures** — `src/vulkan/image_texture.{hpp,cpp}` owns a `VkImage`, memory,
+  view, and sampler. It loads with stb_image, uploads through a staging buffer,
+  transitions layout, and cleans up partial resources on failure.
+- **Pipelines** — `src/vulkan/pipeline_layout.{hpp,cpp}` declares
+  `PushConstant`, `pushConstant<T>()`, `pushConstantRange<T>()`, and
+  `PipelineLayout`, including descriptor-set binding.
+  `src/vulkan/render_pipeline.{hpp,cpp}` declares `VertexInputDescription`,
+  `PipelineConfigInfo`, and `Pipeline`, with pointer repair for copied configs,
+  `defaultPipelineConfigInfo()`, SPIR-V loading, and pipeline creation.
+- **Assets and examples** — `assets/smiley_0.png` is shared by the image and
+  showcase examples. Each directory under `examples/` is a standalone program
+  with its own `main.cpp` and `shaders/`; the Description above summarizes what
+  each one demonstrates.
 
 ## Workflow
 
